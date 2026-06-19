@@ -1,0 +1,85 @@
+# =============================================================================
+# docker-compose.yml — Ambiente de desenvolvimento local
+#
+# Por que Docker Compose?
+# Garante que qualquer dev (hoje você, amanhã um sócio, depois um contratado)
+# suba o ambiente com UM comando: "docker-compose up"
+# Sem "funciona na minha máquina". Sem tutorial de 20 passos para instalar.
+#
+# Para subir: docker-compose up -d
+# Para parar: docker-compose down
+# Para resetar o banco: docker-compose down -v && docker-compose up -d
+# =============================================================================
+
+version: '3.9'
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine    # alpine = imagem 3x menor, sem ferramentas desnecessárias
+    container_name: valinexus_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: valinexus
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      # Volume nomeado: os dados persistem entre restarts do container
+      - postgres_data:/var/lib/postgresql/data
+      # Script de inicialização: roda automaticamente na primeira vez
+      - ./packages/backend/src/database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend API ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile.dev
+    container_name: valinexus_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy    # espera o banco estar pronto
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: postgres               # nome do serviço Docker, não localhost
+      DB_PORT: 5432
+      DB_NAME: valinexus
+      DB_USER: postgres
+      DB_PASSWORD: postgres_dev_password
+      JWT_SECRET: dev_secret_troque_em_producao
+      FRONTEND_URL: http://localhost:5173
+    volumes:
+      # Hot reload: mudanças no código refletem imediatamente
+      - ./packages/backend/src:/app/packages/backend/src
+      - ./packages/shared/src:/app/packages/shared/src
+
+  # ── Frontend React ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile.dev
+    container_name: valinexus_frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3001/api/v1
+    volumes:
+      - ./packages/frontend/src:/app/packages/frontend/src
+
+volumes:
+  postgres_data:
+    name: valinexus_postgres_data

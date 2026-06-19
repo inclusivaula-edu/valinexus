@@ -1,0 +1,75 @@
+name: CI — VALINEXUS
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Testes e Qualidade
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm install --frozen-lockfile
+
+      - name: Build do pacote shared (tipos TypeScript)
+        run: npm run build --workspace=packages/shared
+
+      - name: Rodar testes unitários
+        run: npm run test --workspace=packages/backend -- --coverage --testPathPattern="unit"
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_secret_apenas_para_testes_nao_usar_em_producao
+          NOTIFICATIONS_ENABLED: "false"
+
+      - name: Rodar testes de integração
+        run: npm run test --workspace=packages/backend -- --coverage --testPathPattern="integration"
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ci_secret_apenas_para_testes_nao_usar_em_producao
+          NOTIFICATIONS_ENABLED: "false"
+
+      - name: Upload do relatório de cobertura
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: packages/backend/coverage/
+          retention-days: 7
+
+  build-check:
+    name: Verificação de Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install --frozen-lockfile
+
+      - name: Build shared
+        run: npm run build --workspace=packages/shared
+
+      - name: Build backend (TypeScript → JS)
+        run: npm run build --workspace=packages/backend
+
+      - name: Build frontend (Vite)
+        run: npm run build --workspace=packages/frontend
+        env:
+          VITE_API_URL: https://api.valinexus.com.br/api/v1
