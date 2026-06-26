@@ -224,11 +224,11 @@ export default function Dashboard() {
         {/* Nav */}
         <nav style={{ padding: '12px', flex: 1 }}>
           {([
-            { id: 'overview',        icon: '📊', label: 'Visão Geral' },
-            { id: 'certifications',  icon: '📄', label: 'Certidões' },
-            { id: 'notifications',   icon: '🔔', label: 'Alertas' },
-            { id: 'logistics',       icon: '🚛', label: 'Logística',  disabled: true },
-            { id: 'financial',       icon: '💰', label: 'Financeiro', disabled: true },
+            { id: 'overview',        icon: '📊', label: 'Visão Geral', disabled: false },
+            { id: 'certifications',  icon: '📄', label: 'Certidões',   disabled: false },
+            { id: 'notifications',   icon: '🔔', label: 'Alertas',     disabled: false },
+            { id: 'logistics',       icon: '🚛', label: 'Logística',   disabled: true },
+            { id: 'financial',       icon: '💰', label: 'Financeiro',  disabled: true },
           ] as const).map(item => (
             <button
               key={item.id}
@@ -472,7 +472,7 @@ export default function Dashboard() {
                   fontSize: '13px', outline: 'none',
                 }}
               />
-              {(['ALL', 'EXPIRED', 'EXPIRING_SOON', 'VALID', 'PENDING_UPLOAD'] as const).map(f => (
+              {(['ALL', 'EXPIRED', 'EXPIRING_SOON', 'VALID', 'PENDING_UPLOAD'] as Array<CertStatus | 'ALL'>).map(f => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -482,7 +482,7 @@ export default function Dashboard() {
                     border: `1px solid ${filter === f ? '#1a6b3a' : '#0d2e14'}`,
                     color: filter === f ? '#4ade80' : '#3d6b4a', fontFamily: 'monospace',
                   }}
-                >{{ ALL: 'Todas', EXPIRED: '🔴 Vencidas', EXPIRING_SOON: '⏳ A Vencer', VALID: '✅ Válidas', PENDING_UPLOAD: '📤 Pendentes' }[f]}</button>
+                >{{ ALL: 'Todas', EXPIRED: '🔴 Vencidas', EXPIRING_SOON: '⏳ A Vencer', VALID: '✅ Válidas', PENDING_UPLOAD: '📤 Pendentes', UNDER_REVIEW: '🔍 Em Análise' }[f]}</button>
               ))}
             </div>
 
