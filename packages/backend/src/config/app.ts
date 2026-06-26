@@ -23,6 +23,10 @@ import { notificationsRouter } from '../modules/notifications/notifications.rout
 export function createApp(): Application {
   const app = express();
 
+  // Railway (e a maioria dos hosts cloud) roteia via proxy reverso.
+  // Sem isso, express-rate-limit lança ValidationError ao ver X-Forwarded-For.
+  app.set('trust proxy', 1);
+
   // ── Segurança ────────────────────────────────────────────────────────────
   // helmet() define ~14 cabeçalhos HTTP de segurança automaticamente:
   // X-Content-Type-Options, X-Frame-Options, HSTS, CSP, etc.
