@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@valinexus/shared': path.resolve(__dirname, '../shared/src'),
+      '@valinexus/shared': path.resolve(__dirname, '../shared/src/index.ts'),
     },
   },
   server: {
