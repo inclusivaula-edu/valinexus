@@ -15,6 +15,9 @@ import { companyFactory } from '../../helpers/factories';
 
 jest.mock('../../../modules/companies/companies.repository');
 jest.mock('../../../modules/auth/auth.service');
+jest.mock('../../../modules/notifications/email.service', () => ({
+  emailService: { sendWelcomeCredentials: jest.fn().mockResolvedValue({ success: true, messageId: 'mock-id' }) },
+}));
 
 const mockRepo = companiesRepository as jest.Mocked<typeof companiesRepository>;
 const mockAuth = authService as jest.Mocked<typeof authService>;
@@ -118,7 +121,7 @@ describe('companiesService.create', () => {
 
 describe('companiesService.createWithAdmin', () => {
 
-  it('cria empresa + usuário admin e retorna a senha temporária em texto puro', async () => {
+  it('cria empresa + usuário admin e envia credenciais por email', async () => {
     const created = companyFactory({ cnpj: VALID_CNPJ, razaoSocial: 'Transportadora Norte Ltda' });
     mockRepo.findByCnpj.mockResolvedValue(null);
     mockAuth.hashPassword.mockResolvedValue('hash-fake-bcrypt');
@@ -128,8 +131,7 @@ describe('companiesService.createWithAdmin', () => {
 
     expect(result.company).toEqual(created);
     expect(result.adminEmail).toBe('joao@transnorte.com.br');
-    expect(result.temporaryPassword).toBeDefined();
-    expect(result.temporaryPassword.length).toBeGreaterThanOrEqual(8);
+    expect(result.credentialsSent).toBe(true);
   });
 
   it('usa a senha fornecida quando adminPassword é informado, em vez de gerar uma', async () => {
@@ -142,10 +144,10 @@ describe('companiesService.createWithAdmin', () => {
       baseOnboardDto({ adminPassword: 'MinhaSenh@Custom1' })
     );
 
-    expect(result.temporaryPassword).toBe('MinhaSenh@Custom1');
+    expect(result.credentialsSent).toBe(true);
   });
 
-  it('gera senha temporária com formato Palavra@DDDD quando não informada', async () => {
+  it('gera senha temporária segura via crypto e a envia por email', async () => {
     const created = companyFactory({ cnpj: VALID_CNPJ });
     mockRepo.findByCnpj.mockResolvedValue(null);
     mockAuth.hashPassword.mockResolvedValue('hash-fake');
@@ -153,8 +155,9 @@ describe('companiesService.createWithAdmin', () => {
 
     const result = await companiesService.createWithAdmin(baseOnboardDto());
 
-    // Formato: Letra(s) + @ + 4 dígitos
-    expect(result.temporaryPassword).toMatch(/^[A-Za-z]+@\d{4}$/);
+    // Senha nunca exposta na resposta — apenas confirmação de envio
+    expect(result).not.toHaveProperty('temporaryPassword');
+    expect(result.credentialsSent).toBe(true);
   });
 
   it('hasheia a senha antes de persistir — nunca salva texto puro', async () => {

@@ -19,6 +19,7 @@ import {
   formatCnpj,
 } from '@valinexus/shared';
 import { authService } from '../auth/auth.service';
+import { emailService } from '../notifications/email.service';
 import { logger } from '../../utils/logger';
 import crypto from 'crypto';
 
@@ -29,10 +30,10 @@ import crypto from 'crypto';
  * que uma string aleatória pura.
  */
 function generateTemporaryPassword(): string {
-  const words = ['Amapa', 'Macapa', 'Petro', 'Forte', 'Norte', 'Equador'];
-  const word = words[crypto.randomInt(0, words.length)];
-  const digits = crypto.randomInt(1000, 9999);
-  return `${word}@${digits}`;
+  // Charset sem ambíguos (0/O, 1/l/I) — letras + dígitos garantem validatePasswordStrength
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = crypto.randomBytes(16);
+  return Array.from(bytes, b => chars[b % chars.length]).join('');
 }
 
 export const companiesService = {
@@ -87,13 +88,23 @@ export const companiesService = {
 
     logger.info({ event: 'company_onboarded', companyId: company.id, cnpj: formattedCnpj, adminEmail: dto.adminEmail });
 
-    // A senha temporária só existe em texto puro nesta resposta — nunca
-    // é persistida nem logada. É responsabilidade de quem chama (o admin
-    // VALINEXUS no painel) comunicá-la ao cliente por um canal seguro.
+    // Credenciais entregues via email — a senha nunca trafega na resposta HTTP.
+    const emailResult = await emailService.sendWelcomeCredentials({
+      to: dto.adminEmail,
+      adminName: dto.adminName,
+      companyName: dto.razaoSocial,
+      temporaryPassword,
+      appUrl: process.env.APP_URL ?? 'http://localhost:5173',
+    });
+
+    if (!emailResult.success) {
+      logger.warn({ event: 'welcome_email_failed', adminEmail: dto.adminEmail, error: emailResult.error });
+    }
+
     return {
       company,
       adminEmail: dto.adminEmail,
-      temporaryPassword,
+      credentialsSent: emailResult.success,
     };
   },
 

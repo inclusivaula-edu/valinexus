@@ -126,11 +126,12 @@ export default function Dashboard() {
     if (editingCert) {
       const { companyId: _, ...updateDto } = dto;
       const updated = await update(editingCert.id, updateDto as UpdateCertificationDto);
-      if (file) await uploadFile(updated.id, file);
+      if (file) return await uploadFile(updated.id, file);
     } else {
       const created = await create(dto);
-      if (file) await uploadFile(created.id, file);
+      if (file) return await uploadFile(created.id, file);
     }
+    return null;
   }
 
   async function handleDelete(id: string) {

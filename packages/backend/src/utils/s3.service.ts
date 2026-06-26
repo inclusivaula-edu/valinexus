@@ -121,6 +121,9 @@ export const s3Service = {
     const key = buildKey(certificationId, file.originalname);
 
     if (!isConfigured()) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('AWS S3 não configurado: defina AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY');
+      }
       logger.warn(`[S3 LOCAL] Upload simulado: ${key} (${file.size} bytes)`);
       return {
         key,
@@ -159,6 +162,9 @@ export const s3Service = {
    */
   async getSignedUrl(key: string): Promise<string> {
     if (!isConfigured()) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('AWS S3 não configurado: defina AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY');
+      }
       return `https://mock-s3.local/${BUCKET}/${key}?mock=true`;
     }
 
@@ -175,6 +181,9 @@ export const s3Service = {
    */
   async delete(key: string): Promise<void> {
     if (!isConfigured()) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('AWS S3 não configurado: defina AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY');
+      }
       logger.warn(`[S3 LOCAL] Delete simulado: ${key}`);
       return;
     }

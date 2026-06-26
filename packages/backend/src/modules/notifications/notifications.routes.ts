@@ -17,6 +17,7 @@ import { whatsappService } from './whatsapp.service';
 import { emailService } from './email.service';
 import { certificationScheduler } from './scheduler';
 import { UserRole, AlertChannel } from '@valinexus/shared';
+import { db } from '../../database/connection';
 
 const router = Router();
 router.use(authenticate);
@@ -91,10 +92,60 @@ router.post('/run-scheduler',
   async (_req: Request, res: Response, next: NextFunction) => {
     try {
       // Roda em background sem bloquear a resposta HTTP
-      certificationScheduler.run().catch(err =>
+      certificationScheduler.morningRun().catch((err: unknown) =>
         console.error('Scheduler manual falhou:', err)
       );
       res.json({ success: true, data: { message: 'Scheduler iniciado em background' } });
+    } catch (err) { next(err); }
+  }
+);
+
+// GET /api/v1/notifications/regulatory-changes (apenas SUPER_ADMIN)
+router.get('/regulatory-changes',
+  requireRole(UserRole.SUPER_ADMIN),
+  async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await db.query<{
+        id: string; source_url: string; source_name: string;
+        change_type: string; summary: string; detected_at: Date;
+        reviewed: boolean; reviewed_at: Date | null; action_taken: string | null;
+      }>(
+        `SELECT id, source_url, source_name, change_type, summary,
+                detected_at, reviewed, reviewed_at, action_taken
+         FROM regulatory_changes
+         ORDER BY detected_at DESC
+         LIMIT 200`
+      );
+      const data = result.rows.map(r => ({
+        id:          r.id,
+        sourceUrl:   r.source_url,
+        sourceName:  r.source_name,
+        changeType:  r.change_type,
+        summary:     r.summary,
+        detectedAt:  r.detected_at,
+        reviewed:    r.reviewed,
+        reviewedAt:  r.reviewed_at,
+        actionTaken: r.action_taken,
+      }));
+      res.json({ success: true, data });
+    } catch (err) { next(err); }
+  }
+);
+
+// POST /api/v1/notifications/regulatory-changes/:id/review (apenas SUPER_ADMIN)
+router.post('/regulatory-changes/:id/review',
+  requireRole(UserRole.SUPER_ADMIN),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = req.params;
+      const { actionTaken } = req.body as { actionTaken?: string };
+      await db.query(
+        `UPDATE regulatory_changes
+         SET reviewed = true, reviewed_at = NOW(), reviewed_by = $1, action_taken = $2
+         WHERE id = $3`,
+        [req.user!.userId, actionTaken ?? null, id]
+      );
+      res.json({ success: true, data: { id, reviewed: true } });
     } catch (err) { next(err); }
   }
 );

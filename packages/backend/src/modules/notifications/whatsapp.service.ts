@@ -114,6 +114,30 @@ export const whatsappService = {
     return { success: false, error: 'Falha após 2 tentativas' };
   },
 
+  buildMissingCertsMessage(params: {
+    companyName: string;
+    missing: Array<{ templateName: string; category: string }>;
+    appUrl: string;
+  }): string {
+    const { companyName, missing, appUrl } = params;
+    const list = missing.slice(0, 5).map(m => `  • ${m.templateName}`).join('\n');
+    const extra = missing.length > 5 ? `\n  ... e mais ${missing.length - 5}` : '';
+    return [
+      `📋 *CERTIDÕES FALTANTES — VALINEXUS*`,
+      ``,
+      `Empresa: *${companyName}*`,
+      ``,
+      `As seguintes certidões *não estão cadastradas* no sistema:`,
+      list + extra,
+      ``,
+      `Cadastre-as agora para manter sua conformidade com a Petrobras.`,
+      ``,
+      `👉 Acessar painel: ${appUrl}/dashboard`,
+      ``,
+      `_VALINEXUS · Gestão de Conformidade Petrobras_`,
+    ].join('\n');
+  },
+
   /**
    * Monta a mensagem de alerta no formato WhatsApp (suporta markdown limitado).
    * Negrito: *texto*   Itálico: _texto_   Código: `texto`

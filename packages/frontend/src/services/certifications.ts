@@ -26,6 +26,22 @@ export interface CertificationTemplate {
   isMandatory: boolean;
 }
 
+export interface ExtractedDocData {
+  certificationName: string | null;
+  issuingBody: string | null;
+  documentNumber: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  category: string | null;
+  confidence: 'high' | 'medium' | 'low';
+  rawText: string | null;
+}
+
+export interface UploadResult {
+  fileUrl: string;
+  extracted: ExtractedDocData;
+}
+
 export interface DashboardData {
   certificationSummary: {
     total: number;
@@ -66,10 +82,10 @@ export const certificationsApi = {
     return data.data;
   },
 
-  async uploadFile(id: string, file: File): Promise<{ fileUrl: string }> {
+  async uploadFile(id: string, file: File): Promise<UploadResult> {
     const form = new FormData();
     form.append('file', file);
-    const { data } = await api.post<ApiResponse<{ fileUrl: string }>>(
+    const { data } = await api.post<ApiResponse<UploadResult>>(
       `/certifications/${id}/upload`,
       form,
       { headers: { 'Content-Type': 'multipart/form-data' } }

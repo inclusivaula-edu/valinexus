@@ -22,6 +22,7 @@ import {
 import { logger } from '../../utils/logger';
 import { db } from '../../database/connection';
 import { s3Service } from '../../utils/s3.service';
+import { documentExtractorService } from '../../utils/document-extractor.service';
 
 export const certificationsService = {
 
@@ -51,7 +52,7 @@ export const certificationsService = {
   async uploadDocument(
     certificationId: string,
     file: Express.Multer.File
-  ): Promise<{ fileUrl: string }> {
+  ): Promise<{ fileUrl: string; extracted: import('../../utils/document-extractor.service').ExtractedDocumentData }> {
     const allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
     if (!allowedMimes.includes(file.mimetype)) {
       throw new Error('Tipo de arquivo não suportado. Envie PDF, JPG ou PNG.');
@@ -62,15 +63,31 @@ export const certificationsService = {
       throw new Error('Arquivo muito grande. Limite: 10MB.');
     }
 
-    // Upload real para o S3 — retorna chave permanente e URL temporária
-    const { key, fileUrl } = await s3Service.upload(certificationId, file);
+    // Extração automática de dados via Claude (roda em paralelo com o upload)
+    const [uploadResult, extracted] = await Promise.all([
+      s3Service.upload(certificationId, file),
+      documentExtractorService.extractFromFile(file).catch(err => {
+        logger.warn(`Extração automática falhou (não crítico): ${err.message}`);
+        return documentExtractorService.emptyResult('low');
+      }),
+    ]);
 
-    // Persiste a chave S3 (permanente) e a URL temporária no banco
+    const { key, fileUrl } = uploadResult;
     await certificationsRepository.updateFileUrl(certificationId, fileUrl, key);
+
+    // Se Claude extraiu dados com confiança suficiente, atualiza a certidão
+    if (extracted.expiresAt && extracted.confidence !== 'low') {
+      await certificationsRepository.update(certificationId, {
+        ...(extracted.expiresAt    && { expiresAt:      extracted.expiresAt }),
+        ...(extracted.issuedAt     && { issuedAt:        extracted.issuedAt }),
+        ...(extracted.documentNumber && { documentNumber: extracted.documentNumber }),
+      });
+      logger.info(`Certidão ${certificationId} atualizada com dados extraídos pelo Claude (conf: ${extracted.confidence})`);
+    }
 
     logger.info(`Documento salvo no S3: ${key}`);
 
-    return { fileUrl };
+    return { fileUrl, extracted };
   },
 
   async getDownloadUrl(certificationId: string): Promise<string | null> {
@@ -132,10 +149,9 @@ export const certificationsService = {
     return result.rows;
   },
 
-  /** Chamado pelo scheduler diariamente — sincroniza status de todas as certidões */
+  /** Chamado pelo scheduler — sincroniza EXPIRED e EXPIRING_SOON em transação atômica */
   async syncAllStatuses(): Promise<{ expired: number; expiringSoon: number }> {
-    const expired = await certificationsRepository.syncExpiredStatuses();
-    const expiringSoon = await certificationsRepository.syncExpiringSoonStatuses();
+    const { expired, expiringSoon } = await certificationsRepository.syncAllStatuses();
     logger.info(`Status sync: ${expired} expiradas, ${expiringSoon} a expirar em breve`);
     return { expired, expiringSoon };
   },

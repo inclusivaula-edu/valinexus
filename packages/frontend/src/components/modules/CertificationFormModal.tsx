@@ -21,7 +21,7 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { CertificationCategory, CreateCertificationDto, Certification } from '@valinexus/shared';
-import { CertificationTemplate } from '../../services/certifications';
+import { CertificationTemplate, ExtractedDocData } from '../../services/certifications';
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ interface FormData {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (dto: CreateCertificationDto, file?: File) => Promise<void>;
+  onSubmit: (dto: CreateCertificationDto, file?: File) => Promise<ExtractedDocData | null>;
   editingCert?: Certification | null;
   templates?: CertificationTemplate[];
   companyId: string;
@@ -75,6 +75,7 @@ export function CertificationFormModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [extracted, setExtracted] = useState<ExtractedDocData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<FormData>({
@@ -142,8 +143,9 @@ export function CertificationFormModal({
         expiresAt: new Date(form.expiresAt).toISOString(),
         notes: form.notes.trim() || undefined,
       };
-      await onSubmit(dto, selectedFile ?? undefined);
-      onClose();
+      const result = await onSubmit(dto, selectedFile ?? undefined);
+      if (result) setExtracted(result);
+      else onClose();
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })
         ?.response?.data?.error ?? 'Erro ao salvar. Tente novamente.';
@@ -151,6 +153,59 @@ export function CertificationFormModal({
     } finally {
       setLoading(false);
     }
+  }
+
+  // Tela de resultado da extração IA — mostrada após salvar com arquivo
+  if (extracted) {
+    const confColor = extracted.confidence === 'high' ? '#22c55e' : '#f59e0b';
+    const confLabel = extracted.confidence === 'high' ? 'Alta confiança' : 'Confiança média';
+    return (
+      <>
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
+        <div style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: '480px', maxWidth: '95vw', background: '#060d08',
+          border: '1px solid #1a5c28', borderRadius: '16px', zIndex: 201,
+          boxShadow: '0 25px 60px rgba(0,0,0,0.6)', overflow: 'hidden',
+        }}>
+          <div style={{ background: 'linear-gradient(135deg,#059669,#10b981)', padding: '18px 24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '22px' }}>🤖</span>
+            <div>
+              <div style={{ fontWeight: 700, color: '#fff', fontSize: '15px' }}>Claude extraiu dados do documento</div>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.75)', marginTop: '2px' }}>
+                Certidão salva · dados pré-preenchidos automaticamente
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: '20px 24px' }}>
+            <div style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: `${confColor}22`, color: confColor, border: `1px solid ${confColor}44`, marginBottom: '16px', letterSpacing: '0.5px' }}>
+              {confLabel.toUpperCase()}
+            </div>
+            {[
+              { label: 'Certidão detectada', value: extracted.certificationName },
+              { label: 'Órgão emissor', value: extracted.issuingBody },
+              { label: 'Número do documento', value: extracted.documentNumber },
+              { label: 'Data de emissão', value: extracted.issuedAt },
+              { label: 'Data de vencimento', value: extracted.expiresAt },
+              { label: 'Categoria', value: extracted.category },
+            ].map(row => row.value ? (
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #0d2e14' }}>
+                <span style={{ fontSize: '11px', color: '#5a9a68' }}>{row.label}</span>
+                <span style={{ fontSize: '12px', color: '#e2f0e8', fontWeight: 600, maxWidth: '60%', textAlign: 'right' }}>{row.value}</span>
+              </div>
+            ) : null)}
+          </div>
+          <div style={{ padding: '16px 24px', borderTop: '1px solid #0d2e14', display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={onClose}
+              style={{ padding: '10px 28px', borderRadius: '8px', background: 'linear-gradient(135deg,#059669,#10b981)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      </>
+    );
   }
 
   if (!isOpen) return null;

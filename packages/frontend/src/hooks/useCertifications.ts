@@ -16,7 +16,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Certification, CreateCertificationDto, UpdateCertificationDto } from '@valinexus/shared';
-import { certificationsApi, DashboardData, CertificationTemplate } from '../services/certifications';
+import { certificationsApi, DashboardData, CertificationTemplate, ExtractedDocData } from '../services/certifications';
 
 interface UseCertificationsReturn {
   certifications: Certification[];
@@ -26,7 +26,7 @@ interface UseCertificationsReturn {
   error: string | null;
   create: (dto: CreateCertificationDto) => Promise<Certification>;
   update: (id: string, dto: UpdateCertificationDto) => Promise<Certification>;
-  uploadFile: (id: string, file: File) => Promise<void>;
+  uploadFile: (id: string, file: File) => Promise<ExtractedDocData | null>;
   remove: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -79,12 +79,12 @@ export function useCertifications(): UseCertificationsReturn {
     return updated;
   }, []);
 
-  const uploadFile = useCallback(async (id: string, file: File): Promise<void> => {
-    const { fileUrl } = await certificationsApi.uploadFile(id, file);
-    // Atualiza só o fileUrl do item afetado — sem recarregar a lista inteira
+  const uploadFile = useCallback(async (id: string, file: File): Promise<ExtractedDocData | null> => {
+    const { fileUrl, extracted } = await certificationsApi.uploadFile(id, file);
     setCertifications(prev =>
       prev.map(c => c.id === id ? { ...c, fileUrl, status: 'UNDER_REVIEW' as Certification['status'] } : c)
     );
+    return extracted?.confidence !== 'low' ? extracted : null;
   }, []);
 
   const remove = useCallback(async (id: string): Promise<void> => {

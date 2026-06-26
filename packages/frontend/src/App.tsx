@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import AdminCompaniesPage from './pages/AdminCompaniesPage';
+import RegulatoryChangesPage from './pages/RegulatoryChangesPage';
 
 function ChangePasswordRoute() {
   const { user } = useAuth();
@@ -58,6 +59,17 @@ export default function App() {
               <ProtectedRoute>
                 <AdminOnlyRoute>
                   <AdminCompaniesPage />
+                </AdminOnlyRoute>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/regulatory-changes"
+            element={
+              <ProtectedRoute>
+                <AdminOnlyRoute>
+                  <RegulatoryChangesPage />
                 </AdminOnlyRoute>
               </ProtectedRoute>
             }

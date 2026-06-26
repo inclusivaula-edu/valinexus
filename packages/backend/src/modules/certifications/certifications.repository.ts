@@ -12,7 +12,7 @@
  * 3. Manutenção: quando mudar uma query, você muda em um lugar só.
  */
 
-import { db } from '../../database/connection';
+import { db, withTransaction } from '../../database/connection';
 import {
   Certification,
   CertificationStatus,
@@ -164,21 +164,44 @@ export const certificationsRepository = {
     );
   },
 
-  /** Atualiza o status de todas as certidões vencidas — chamado pelo scheduler */
+  /**
+   * Sincroniza EXPIRED e EXPIRING_SOON em uma única transação.
+   * Sem transação, uma falha entre os dois UPDATEs deixaria o banco
+   * com estados inconsistentes (ex: vencida marcada como EXPIRING_SOON).
+   */
+  async syncAllStatuses(): Promise<{ expired: number; expiringSoon: number }> {
+    return withTransaction(async (client) => {
+      const expiredResult = await client.query(
+        `UPDATE certifications
+         SET status = 'EXPIRED'
+         WHERE expires_at < NOW()::DATE AND status != 'EXPIRED'`
+      );
+      const expiringSoonResult = await client.query(
+        `UPDATE certifications
+         SET status = 'EXPIRING_SOON'
+         WHERE expires_at BETWEEN NOW()::DATE AND (NOW()::DATE + INTERVAL '30 days')
+           AND status = 'VALID'`
+      );
+      return {
+        expired:      expiredResult.rowCount ?? 0,
+        expiringSoon: expiringSoonResult.rowCount ?? 0,
+      };
+    });
+  },
+
+  /** @deprecated Use syncAllStatuses() — mantido para compatibilidade de testes */
   async syncExpiredStatuses(): Promise<number> {
     const result = await db.query(
-      `UPDATE certifications
-       SET status = 'EXPIRED'
+      `UPDATE certifications SET status = 'EXPIRED'
        WHERE expires_at < NOW()::DATE AND status != 'EXPIRED'`
     );
     return result.rowCount ?? 0;
   },
 
-  /** Atualiza o status de certidões que vencem em 30 dias */
+  /** @deprecated Use syncAllStatuses() — mantido para compatibilidade de testes */
   async syncExpiringSoonStatuses(): Promise<number> {
     const result = await db.query(
-      `UPDATE certifications
-       SET status = 'EXPIRING_SOON'
+      `UPDATE certifications SET status = 'EXPIRING_SOON'
        WHERE expires_at BETWEEN NOW()::DATE AND (NOW()::DATE + INTERVAL '30 days')
          AND status = 'VALID'`
     );

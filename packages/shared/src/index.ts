@@ -179,8 +179,8 @@ export interface CreateCompanyWithAdminDto extends CreateCompanyDto {
 export interface CreateCompanyWithAdminResult {
   company: Company;
   adminEmail: string;
-  /** Retornada em texto puro APENAS nesta resposta — nunca persistida nem logada. */
-  temporaryPassword: string;
+  /** Confirmação de que o email de boas-vindas foi enviado com as credenciais. */
+  credentialsSent: boolean;
 }
 
 export interface CreateCertificationDto {

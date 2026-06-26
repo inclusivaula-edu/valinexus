@@ -17,6 +17,7 @@
 import React, { useState } from 'react';
 import { CreateCompanyWithAdminDto, CreateCompanyWithAdminResult, formatCnpj } from '@valinexus/shared';
 
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -66,7 +67,6 @@ export function OnboardCompanyModal({ isOpen, onClose, onSubmit }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<CreateCompanyWithAdminResult | null>(null);
-  const [copied, setCopied] = useState(false);
 
   const set = (field: keyof FormData) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -99,7 +99,6 @@ export function OnboardCompanyModal({ isOpen, onClose, onSubmit }: Props) {
     setForm(EMPTY_FORM);
     setError('');
     setResult(null);
-    setCopied(false);
     onClose();
   }
 
@@ -140,14 +139,6 @@ export function OnboardCompanyModal({ isOpen, onClose, onSubmit }: Props) {
     }
   }
 
-  function copyCredentials() {
-    if (!result) return;
-    const text = `🔐 Acesso VALINEXUS\n\nEmpresa: ${form.razaoSocial}\nLogin: ${result.adminEmail}\nSenha temporária: ${result.temporaryPassword}\n\nAcesse: ${window.location.origin}/login\n\n⚠️ Você precisará trocar essa senha no primeiro acesso.`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 3000);
-  }
-
   if (!isOpen) return null;
 
   const inputStyle: React.CSSProperties = {
@@ -183,41 +174,35 @@ export function OnboardCompanyModal({ isOpen, onClose, onSubmit }: Props) {
             <div style={{ padding: '24px', overflowY: 'auto' }}>
               <p style={{ fontSize: '13px', color: '#4a7a54', marginBottom: '20px', lineHeight: 1.6 }}>
                 <strong style={{ color: '#fbbf24' }}>{form.razaoSocial}</strong> já está ativa na plataforma.
-                Copie as credenciais abaixo e envie ao responsável por um canal seguro (WhatsApp, ligação).
-                Esta senha <strong>não será exibida novamente</strong>.
               </p>
 
               <div style={{
                 background: '#0a1a0e', border: '1px solid #1a5c28', borderRadius: '10px',
-                padding: '18px', marginBottom: '16px', fontFamily: 'monospace', fontSize: '13px',
+                padding: '18px', marginBottom: '16px', fontSize: '13px',
               }}>
-                <div style={{ marginBottom: '10px' }}>
-                  <span style={{ color: '#3d6b4a' }}>Login: </span>
-                  <span style={{ color: '#e2f0e8' }}>{result.adminEmail}</span>
-                </div>
-                <div>
-                  <span style={{ color: '#3d6b4a' }}>Senha temporária: </span>
-                  <span style={{ color: '#fbbf24', fontWeight: 700 }}>{result.temporaryPassword}</span>
-                </div>
+                {result.credentialsSent ? (
+                  <p style={{ color: '#4ade80', margin: 0, lineHeight: 1.6 }}>
+                    📧 Credenciais de acesso enviadas para <strong>{result.adminEmail}</strong>.<br />
+                    <span style={{ color: '#5a9a68', fontSize: '12px' }}>
+                      O responsável receberá login e senha temporária por email e deverá trocá-la no primeiro acesso.
+                    </span>
+                  </p>
+                ) : (
+                  <p style={{ color: '#f87171', margin: 0, lineHeight: 1.6 }}>
+                    ⚠️ Não foi possível enviar o email de credenciais para <strong>{result.adminEmail}</strong>.
+                    Verifique as configurações de SMTP e reenvie manualmente.
+                  </p>
+                )}
               </div>
-
-              <button
-                onClick={copyCredentials}
-                style={{
-                  width: '100%', padding: '12px', borderRadius: '8px', fontSize: '13px', fontWeight: 700,
-                  background: copied ? '#0d2e14' : 'linear-gradient(135deg, #059669, #10b981)',
-                  border: copied ? '1px solid #1a6b3a' : 'none',
-                  color: copied ? '#4ade80' : '#fff', cursor: 'pointer', marginBottom: '10px',
-                }}
-              >{copied ? '✅ Copiado para a área de transferência!' : '📋 Copiar mensagem para WhatsApp'}</button>
 
               <button
                 onClick={handleClose}
                 style={{
                   width: '100%', padding: '11px', borderRadius: '8px', fontSize: '13px',
-                  background: 'transparent', border: '1px solid #1a3a22', color: '#4a7a54', cursor: 'pointer',
+                  background: 'linear-gradient(135deg, #059669, #10b981)',
+                  border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 700,
                 }}
-              >Fechar</button>
+              >Concluir</button>
             </div>
           </>
         ) : (

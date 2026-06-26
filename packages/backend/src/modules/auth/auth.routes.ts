@@ -7,12 +7,20 @@ import { validateRequest } from '../../middleware/validateRequest';
 
 const router = Router();
 
-// Rate limit agressivo só no login: 10 tentativas por 15min por IP.
-// Sem isso, um atacante pode tentar milhões de senhas (brute force).
 const loginRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { success: false, error: 'Muitas tentativas de login. Aguarde 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Change-password também precisa de rate limit: endpoint autenticado mas
+// ainda vulnerável a força bruta se o atacante já tiver um token válido.
+const changePasswordRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: 'Muitas tentativas de troca de senha. Aguarde 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -38,6 +46,6 @@ router.post('/refresh', authController.refresh);
 router.post('/logout',  authController.logout);
 router.post('/logout-all', authenticate, authController.logoutAll);
 router.get('/me', authenticate, authController.me);
-router.put('/change-password', authenticate, validateRequest(changePasswordSchema), authController.changePassword);
+router.put('/change-password', authenticate, changePasswordRateLimit, validateRequest(changePasswordSchema), authController.changePassword);
 
 export { router as authRouter };
