@@ -97,16 +97,16 @@ export function CertificationFormModal({
   ) => setForm(f => ({ ...f, [field]: e.target.value }));
 
   const applyTemplate = (tpl: CertificationTemplate) => {
-    const validityDays = tpl.typicalValidityDays;
+    const validityDays = Number(tpl.typicalValidityDays);
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + validityDays);
+    if (!isNaN(validityDays)) expiresAt.setDate(expiresAt.getDate() + validityDays);
 
     setForm(f => ({
       ...f,
       name: tpl.name,
       category: tpl.category as CertificationCategory,
       issuingBody: tpl.issuingBody,
-      expiresAt: expiresAt.toISOString().split('T')[0],
+      expiresAt: isNaN(expiresAt.getTime()) ? '' : expiresAt.toISOString().split('T')[0],
     }));
     setShowTemplates(false);
   };
