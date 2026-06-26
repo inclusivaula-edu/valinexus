@@ -56,7 +56,7 @@ COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 
 # Copiar migrations e seed (rodados em runtime, não em build)
-COPY packages/backend/src/database/migrations ./packages/backend/src/database/migrations
+COPY packages/backend/src/database/migrations ./packages/backend/dist/database/migrations
 
 # Trocar para usuário não-root
 USER valinexus
