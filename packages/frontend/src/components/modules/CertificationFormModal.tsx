@@ -78,18 +78,20 @@ export function CertificationFormModal({
   const [extracted, setExtracted] = useState<ExtractedDocData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  function safeDate(v: unknown): string {
+    if (!v) return '';
+    const d = new Date(v as string);
+    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+  }
+
   const [form, setForm] = useState<FormData>({
-    name: editingCert?.name ?? '',
+    name: String(editingCert?.name ?? ''),
     category: (editingCert?.category as CertificationCategory) ?? '',
-    issuingBody: editingCert?.issuingBody ?? '',
-    documentNumber: editingCert?.documentNumber ?? '',
-    issuedAt: editingCert?.issuedAt
-      ? (() => { const d = new Date(editingCert.issuedAt); return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]; })()
-      : '',
-    expiresAt: editingCert?.expiresAt
-      ? (() => { const d = new Date(editingCert.expiresAt); return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]; })()
-      : '',
-    notes: editingCert?.notes ?? '',
+    issuingBody: String(editingCert?.issuingBody ?? ''),
+    documentNumber: String(editingCert?.documentNumber ?? ''),
+    issuedAt: safeDate(editingCert?.issuedAt),
+    expiresAt: safeDate(editingCert?.expiresAt),
+    notes: String(editingCert?.notes ?? ''),
   });
 
   const set = (field: keyof FormData) => (
@@ -125,7 +127,7 @@ export function CertificationFormModal({
     setSelectedFile(file);
   }, []);
 
-  const step1Valid = form.name.trim().length >= 3 && form.category !== '' && form.issuingBody.trim().length >= 2;
+  const step1Valid = (form.name || '').trim().length >= 3 && form.category !== '' && (form.issuingBody || '').trim().length >= 2;
   const step2Valid = form.expiresAt !== '';
 
   async function handleSubmit() {
@@ -135,13 +137,13 @@ export function CertificationFormModal({
     try {
       const dto: CreateCertificationDto = {
         companyId,
-        name: form.name.trim(),
+        name: (form.name || '').trim(),
         category: form.category as CertificationCategory,
-        issuingBody: form.issuingBody.trim(),
-        documentNumber: form.documentNumber.trim() || undefined,
+        issuingBody: (form.issuingBody || '').trim(),
+        documentNumber: (form.documentNumber || '').trim() || undefined,
         issuedAt: form.issuedAt ? new Date(form.issuedAt).toISOString() : undefined,
-        expiresAt: new Date(form.expiresAt).toISOString(),
-        notes: form.notes.trim() || undefined,
+        expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : new Date().toISOString(),
+        notes: (form.notes || '').trim() || undefined,
       };
       const result = await onSubmit(dto, selectedFile ?? undefined);
       if (result) setExtracted(result);
