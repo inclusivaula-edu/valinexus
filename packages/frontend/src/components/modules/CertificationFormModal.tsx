@@ -84,10 +84,10 @@ export function CertificationFormModal({
     issuingBody: editingCert?.issuingBody ?? '',
     documentNumber: editingCert?.documentNumber ?? '',
     issuedAt: editingCert?.issuedAt
-      ? new Date(editingCert.issuedAt).toISOString().split('T')[0]
+      ? (() => { const d = new Date(editingCert.issuedAt); return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]; })()
       : '',
     expiresAt: editingCert?.expiresAt
-      ? new Date(editingCert.expiresAt).toISOString().split('T')[0]
+      ? (() => { const d = new Date(editingCert.expiresAt); return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]; })()
       : '',
     notes: editingCert?.notes ?? '',
   });

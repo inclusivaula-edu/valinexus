@@ -540,7 +540,7 @@ export default function Dashboard() {
                             {cert.issuingBody}
                           </td>
                           <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontSize: '12px', color: '#4a7a54', whiteSpace: 'nowrap' }}>
-                            {new Date(cert.expiresAt).toLocaleDateString('pt-BR')}
+                            {cert.expiresAt ? new Date(cert.expiresAt).toLocaleDateString('pt-BR') : '—'}
                           </td>
                           <td style={{ padding: '12px 14px' }}>
                             <StatusBadge status={cert.status} expiresAt={cert.expiresAt} />
