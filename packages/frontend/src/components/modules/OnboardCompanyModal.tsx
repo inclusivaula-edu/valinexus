@@ -327,6 +327,11 @@ export function OnboardCompanyModal({ isOpen, onClose, onSubmit }: Props) {
                       Aplicar as 18 certidões padrão da cadeia Petrobras automaticamente
                     </span>
                   </label>
+                  {!form.applyDefaultTemplates && (
+                    <div style={{ marginTop: '8px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.25)', fontSize: '12px', color: '#fbbf24' }}>
+                      A empresa será criada sem certidões. Você precisará adicioná-las manualmente depois.
+                    </div>
+                  )}
 
                   <div style={{ marginTop: '20px', padding: '14px', borderRadius: '8px', background: '#070f0a', border: '1px solid #0d2e14', fontSize: '12px', color: '#4a7a54' }}>
                     <div><strong style={{ color: '#a7d9b2' }}>{form.razaoSocial}</strong> — {formatCnpj(form.cnpj.replace(/\D/g, '').padEnd(14, '0'))}</div>
