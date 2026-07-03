@@ -226,7 +226,7 @@ export default function AdminCompaniesPage() {
                       const statusStyle = STATUS_COLOR[company.status];
                       const isActing = actionId === company.id;
                       return (
-                        <tr key={company.id} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #080f0a' : 'none' }}>
+                        <tr key={company.id} onClick={() => navigate(`/admin/companies/${company.id}`)} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #080f0a' : 'none', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.background = '#0a1a0e')} onMouseLeave={e => (e.currentTarget.style.background = '')}>
                           <td style={{ padding: '13px 14px' }}>
                             <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2f0e8' }}>{company.razaoSocial}</div>
                             {company.nomeFantasia && <div style={{ fontSize: '11px', color: '#4a7a54' }}>{company.nomeFantasia}</div>}

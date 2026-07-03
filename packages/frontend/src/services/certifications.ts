@@ -57,8 +57,9 @@ export interface DashboardData {
 
 export const certificationsApi = {
 
-  async list(): Promise<Certification[]> {
-    const { data } = await api.get<ApiResponse<Certification[]>>('/certifications');
+  async list(companyId?: string): Promise<Certification[]> {
+    const params = companyId ? `?companyId=${companyId}` : '';
+    const { data } = await api.get<ApiResponse<Certification[]>>(`/certifications${params}`);
     return data.data;
   },
 

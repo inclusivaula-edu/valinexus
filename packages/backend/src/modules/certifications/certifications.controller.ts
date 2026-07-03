@@ -20,7 +20,7 @@ export const certificationsController = {
     try {
       // companyId pode vir da URL (/companies/:companyId/certifications)
       // ou do token JWT (quando o usuário vê as próprias certidões)
-      const companyId = req.params.companyId ?? req.user!.companyId;
+      const companyId = req.params.companyId ?? (req.query.companyId as string) ?? req.user!.companyId;
       const certifications = await certificationsService.listByCompany(companyId);
       res.json({ success: true, data: certifications });
     } catch (err) {
@@ -30,7 +30,7 @@ export const certificationsController = {
 
   async getDashboard(req: Request, res: Response, next: NextFunction) {
     try {
-      const companyId = req.params.companyId ?? req.user!.companyId;
+      const companyId = req.params.companyId ?? (req.query.companyId as string) ?? req.user!.companyId;
       const dashboard = await certificationsService.getDashboard(companyId);
       res.json({ success: true, data: dashboard });
     } catch (err) {

@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import AdminCompaniesPage from './pages/AdminCompaniesPage';
+import CompanyDetailPage from './pages/CompanyDetailPage';
 import RegulatoryChangesPage from './pages/RegulatoryChangesPage';
 
 function ChangePasswordRoute() {
@@ -59,6 +60,17 @@ export default function App() {
               <ProtectedRoute>
                 <AdminOnlyRoute>
                   <AdminCompaniesPage />
+                </AdminOnlyRoute>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/companies/:id"
+            element={
+              <ProtectedRoute>
+                <AdminOnlyRoute>
+                  <CompanyDetailPage />
                 </AdminOnlyRoute>
               </ProtectedRoute>
             }
