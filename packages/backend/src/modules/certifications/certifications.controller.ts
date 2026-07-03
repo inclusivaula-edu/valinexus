@@ -57,9 +57,11 @@ export const certificationsController = {
         companyId: req.body.companyId ?? req.user!.companyId,
       };
       const certification = await certificationsService.create(dto);
-      // 201 Created — semanticamente correto para criação de recursos
       res.status(201).json({ success: true, data: certification });
     } catch (err) {
+      if (err instanceof Error && err.message === 'CERTIDAO_DUPLICADA') {
+        return res.status(409).json({ success: false, error: 'Já existe uma certidão com este nome e categoria para esta empresa.' });
+      }
       next(err);
     }
   },

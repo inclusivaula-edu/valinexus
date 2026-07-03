@@ -35,12 +35,18 @@ export const certificationsService = {
   },
 
   async create(dto: CreateCertificationDto): Promise<Certification> {
-    // Validação de data: certidão não pode vencer no passado ao ser criada
-    // (a menos que seja para registrar um histórico — futuramente)
+    const existing = await certificationsRepository.findByCompanyId(dto.companyId);
+    const duplicate = existing.find(c =>
+      c.name.toLowerCase().trim() === dto.name.toLowerCase().trim() &&
+      c.category === dto.category
+    );
+    if (duplicate) {
+      throw new Error('CERTIDAO_DUPLICADA');
+    }
+
     const expiresAt = new Date(dto.expiresAt);
     if (expiresAt < new Date()) {
       logger.warn(`Criando certidão já vencida para empresa ${dto.companyId}: ${dto.name}`);
-      // Não bloqueamos — a empresa pode querer registrar para saber que precisa renovar
     }
     return certificationsRepository.create(dto);
   },

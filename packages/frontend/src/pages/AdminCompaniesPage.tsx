@@ -8,6 +8,7 @@
  */
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Company, CompanyStatus, PlanTier } from '@valinexus/shared';
 import { useCompanies } from '../hooks/useCompanies';
 import { useAuth } from '../store/AuthContext';
@@ -27,6 +28,7 @@ const PLAN_LABEL: Record<PlanTier, string> = {
 };
 
 export default function AdminCompaniesPage() {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { companies, isLoading, error, onboard, suspend, reactivate, refresh } = useCompanies();
 
@@ -93,6 +95,17 @@ export default function AdminCompaniesPage() {
         </div>
 
         <nav style={{ padding: '12px', flex: 1 }}>
+          <button
+            onClick={() => navigate('/dashboard')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
+              padding: '9px 12px', borderRadius: '8px', background: 'transparent',
+              border: '1px solid transparent', color: '#5a9a68', fontSize: '13px',
+              cursor: 'pointer', marginBottom: '6px', textAlign: 'left',
+            }}
+          >
+            <span>← Voltar</span>
+          </button>
           <div style={{
             display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px',
             borderRadius: '8px', background: '#0d2e14', border: '1px solid #1a5c28',
