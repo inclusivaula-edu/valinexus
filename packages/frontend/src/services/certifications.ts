@@ -98,6 +98,17 @@ export const certificationsApi = {
     await api.delete(`/certifications/${id}`);
   },
 
+  async extractFromFile(file: File): Promise<ExtractedDocData> {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await api.post<ApiResponse<ExtractedDocData>>(
+      '/certifications/extract',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 30000 }
+    );
+    return data.data;
+  },
+
   /**
    * Gera uma URL pré-assinada nova (válida por 15min) para o documento.
    * Chamar sempre antes de abrir o arquivo — a URL salva localmente

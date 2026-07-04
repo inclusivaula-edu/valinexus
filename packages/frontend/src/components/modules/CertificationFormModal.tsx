@@ -1,29 +1,6 @@
-/**
- * components/modules/CertificationFormModal.tsx
- *
- * Modal de 3 etapas para criar ou editar uma certidão.
- *
- * Etapa 1 — Identificação: nome, categoria, órgão emissor
- * Etapa 2 — Datas e observações: emissão, vencimento, notas
- * Etapa 3 — Documento: upload do arquivo PDF/imagem
- *
- * Por que 3 etapas e não um formulário único?
- * Um formulário com 8 campos exige que o usuário processe tudo de uma vez.
- * Três etapas progressivas reduzem a carga cognitiva: o usuário foca em
- * um tipo de informação por vez. Em mobile (onde boa parte dos clientes
- * vai acessar), isso também melhora muito a experiência de digitação.
- *
- * Suporte a dois modos:
- * - Criação: todos os campos vazios, etapa 1 primeiro
- * - Edição: campos pré-preenchidos, abre na etapa 1
- * - Criação a partir de template: nome, categoria e órgão pré-preenchidos
- */
-
 import React, { useState, useRef, useCallback } from 'react';
 import { CertificationCategory, CreateCertificationDto, Certification } from '@valinexus/shared';
-import { CertificationTemplate, ExtractedDocData } from '../../services/certifications';
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
+import { CertificationTemplate, ExtractedDocData, certificationsApi } from '../../services/certifications';
 
 const CATEGORIES: { value: CertificationCategory; label: string; color: string }[] = [
   { value: CertificationCategory.FISCAL,      label: 'Fiscal',       color: '#3b82f6' },
@@ -36,7 +13,18 @@ const CATEGORIES: { value: CertificationCategory; label: string; color: string }
   { value: CertificationCategory.AMBIENTAL,   label: 'Ambiental',    color: '#84cc16' },
 ];
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
+const CATEGORY_MAP: Record<string, CertificationCategory> = {
+  fiscal: CertificationCategory.FISCAL,
+  trabalhista: CertificationCategory.TRABALHISTA,
+  seguranca: CertificationCategory.SEGURANCA,
+  'segurança': CertificationCategory.SEGURANCA,
+  tecnico: CertificationCategory.TECNICO,
+  'técnico': CertificationCategory.TECNICO,
+  petrobras: CertificationCategory.PETROBRAS,
+  seguro: CertificationCategory.SEGURO,
+  operacional: CertificationCategory.OPERACIONAL,
+  ambiental: CertificationCategory.AMBIENTAL,
+};
 
 interface FormData {
   name: string;
@@ -57,7 +45,17 @@ interface Props {
   companyId: string;
 }
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+function safeDate(v: unknown): string {
+  if (!v) return '';
+  const d = new Date(v as string);
+  return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+}
+
+function mapCategory(raw: string | null): CertificationCategory | '' {
+  if (!raw) return '';
+  const key = raw.toLowerCase().trim();
+  return CATEGORY_MAP[key] ?? '';
+}
 
 export function CertificationFormModal({
   isOpen,
@@ -69,20 +67,17 @@ export function CertificationFormModal({
 }: Props) {
 
   const isEditing = !!editingCert;
-  const [step, setStep] = useState(1);
+
+  // step 0 = upload (new certs only), 1 = identification, 2 = dates + save
+  const [step, setStep] = useState(isEditing ? 1 : 0);
   const [loading, setLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [extracted, setExtracted] = useState<ExtractedDocData | null>(null);
+  const [extractionDone, setExtractionDone] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function safeDate(v: unknown): string {
-    if (!v) return '';
-    const d = new Date(v as string);
-    return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
-  }
 
   const [form, setForm] = useState<FormData>({
     name: String(editingCert?.name ?? ''),
@@ -127,6 +122,33 @@ export function CertificationFormModal({
     setSelectedFile(file);
   }, []);
 
+  async function handleExtract() {
+    if (!selectedFile) return;
+    setExtracting(true);
+    setError('');
+    try {
+      const data = await certificationsApi.extractFromFile(selectedFile);
+      setExtractionDone(true);
+      setForm({
+        name: String(data.certificationName ?? ''),
+        category: mapCategory(data.category),
+        issuingBody: String(data.issuingBody ?? ''),
+        documentNumber: String(data.documentNumber ?? ''),
+        issuedAt: safeDate(data.issuedAt),
+        expiresAt: safeDate(data.expiresAt),
+        notes: '',
+      });
+      setStep(1);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data?.error ?? 'Erro ao extrair dados. Preencha manualmente.';
+      setError(msg);
+      setStep(1);
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   const step1Valid = (form.name || '').trim().length >= 3 && form.category !== '' && (form.issuingBody || '').trim().length >= 2;
   const step2Valid = form.expiresAt !== '';
 
@@ -145,9 +167,8 @@ export function CertificationFormModal({
         expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : new Date().toISOString(),
         notes: (form.notes || '').trim() || undefined,
       };
-      const result = await onSubmit(dto, selectedFile ?? undefined);
-      if (result) setExtracted(result);
-      else onClose();
+      await onSubmit(dto, selectedFile ?? undefined);
+      onClose();
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } })
         ?.response?.data?.error ?? 'Erro ao salvar. Tente novamente.';
@@ -157,62 +178,7 @@ export function CertificationFormModal({
     }
   }
 
-  // Tela de resultado da extração IA — mostrada após salvar com arquivo
-  if (extracted) {
-    const confColor = extracted.confidence === 'high' ? '#22c55e' : '#f59e0b';
-    const confLabel = extracted.confidence === 'high' ? 'Alta confiança' : 'Confiança média';
-    return (
-      <>
-        <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, backdropFilter: 'blur(4px)' }} />
-        <div style={{
-          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          width: '480px', maxWidth: '95vw', background: '#060d08',
-          border: '1px solid #1a5c28', borderRadius: '16px', zIndex: 201,
-          boxShadow: '0 25px 60px rgba(0,0,0,0.6)', overflow: 'hidden',
-        }}>
-          <div style={{ background: 'linear-gradient(135deg,#059669,#10b981)', padding: '18px 24px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '22px' }}>🤖</span>
-            <div>
-              <div style={{ fontWeight: 700, color: '#fff', fontSize: '15px' }}>Claude extraiu dados do documento</div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.75)', marginTop: '2px' }}>
-                Certidão salva · dados pré-preenchidos automaticamente
-              </div>
-            </div>
-          </div>
-          <div style={{ padding: '20px 24px' }}>
-            <div style={{ display: 'inline-block', padding: '3px 10px', borderRadius: '4px', fontSize: '10px', fontWeight: 700, background: `${confColor}22`, color: confColor, border: `1px solid ${confColor}44`, marginBottom: '16px', letterSpacing: '0.5px' }}>
-              {confLabel.toUpperCase()}
-            </div>
-            {[
-              { label: 'Certidão detectada', value: extracted.certificationName },
-              { label: 'Órgão emissor', value: extracted.issuingBody },
-              { label: 'Número do documento', value: extracted.documentNumber },
-              { label: 'Data de emissão', value: extracted.issuedAt },
-              { label: 'Data de vencimento', value: extracted.expiresAt },
-              { label: 'Categoria', value: extracted.category },
-            ].map(row => row.value ? (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #0d2e14' }}>
-                <span style={{ fontSize: '11px', color: '#5a9a68' }}>{row.label}</span>
-                <span style={{ fontSize: '12px', color: '#e2f0e8', fontWeight: 600, maxWidth: '60%', textAlign: 'right' }}>{row.value}</span>
-              </div>
-            ) : null)}
-          </div>
-          <div style={{ padding: '16px 24px', borderTop: '1px solid #0d2e14', display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              onClick={onClose}
-              style={{ padding: '10px 28px', borderRadius: '8px', background: 'linear-gradient(135deg,#059669,#10b981)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '13px', cursor: 'pointer' }}
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-      </>
-    );
-  }
-
   if (!isOpen) return null;
-
-  // ── Estilos reutilizados ──────────────────────────────────────────────────
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '10px 14px', borderRadius: '8px',
@@ -228,11 +194,8 @@ export function CertificationFormModal({
 
   const fieldWrap: React.CSSProperties = { marginBottom: '16px' };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <>
-      {/* Overlay */}
       <div
         onClick={onClose}
         style={{
@@ -241,7 +204,6 @@ export function CertificationFormModal({
         }}
       />
 
-      {/* Modal */}
       <div style={{
         position: 'fixed', top: '50%', left: '50%',
         transform: 'translate(-50%, -50%)',
@@ -252,7 +214,7 @@ export function CertificationFormModal({
         overflow: 'hidden',
       }}>
 
-        {/* ── Header ── */}
+        {/* Header */}
         <div style={{
           padding: '20px 24px 16px',
           borderBottom: '1px solid #0d2e14',
@@ -261,10 +223,12 @@ export function CertificationFormModal({
         }}>
           <div>
             <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#e2f0e8', margin: 0 }}>
-              {isEditing ? '✏️ Editar Certidão' : '+ Nova Certidão'}
+              {isEditing ? '✏️ Editar Certidão' : step === 0 ? '📄 Upload do Documento' : '+ Nova Certidão'}
             </h2>
             <p style={{ fontSize: '12px', color: '#3d6b4a', margin: '3px 0 0' }}>
-              Etapa {step} de {isEditing ? 2 : 3}
+              {step === 0
+                ? 'Envie o PDF e a IA preenche automaticamente'
+                : `Etapa ${step} de 2`}
             </p>
           </div>
           <button
@@ -277,24 +241,139 @@ export function CertificationFormModal({
           >×</button>
         </div>
 
-        {/* ── Progress bar ── */}
+        {/* Progress bar */}
         <div style={{ height: '3px', background: '#0d2e14', flexShrink: 0 }}>
           <div style={{
             height: '100%',
-            width: `${(step / (isEditing ? 2 : 3)) * 100}%`,
+            width: step === 0 ? '5%' : `${(step / 2) * 100}%`,
             background: 'linear-gradient(90deg, #059669, #10b981)',
             transition: 'width 0.3s ease',
           }} />
         </div>
 
-        {/* ── Body ── */}
+        {/* Body */}
         <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
 
-          {/* ── ETAPA 1: Identificação ── */}
+          {/* STEP 0: Upload first */}
+          {step === 0 && !isEditing && (
+            <div>
+              {extracting ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{
+                    width: '60px', height: '60px', margin: '0 auto 20px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animation: 'vn-pulse 1.5s ease-in-out infinite',
+                  }}>
+                    <span style={{ fontSize: '28px' }}>🤖</span>
+                  </div>
+                  <style>{`@keyframes vn-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.08); } }`}</style>
+                  <div style={{ fontWeight: 700, color: '#e2f0e8', fontSize: '15px', marginBottom: '8px' }}>
+                    Claude está lendo o documento...
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#4a7a54', lineHeight: 1.6 }}>
+                    Extraindo nome, órgão emissor, datas e categoria.
+                    <br />Isso leva de 3 a 8 segundos.
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    padding: '14px 16px', borderRadius: '10px', marginBottom: '20px',
+                    background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)',
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                  }}>
+                    <span style={{ fontSize: '18px', flexShrink: 0, marginTop: '1px' }}>🤖</span>
+                    <div style={{ fontSize: '13px', color: '#c4b5fd', lineHeight: 1.6 }}>
+                      <strong>IA preenche automaticamente!</strong> Envie o PDF ou imagem da certidão
+                      e o Claude vai extrair todos os dados. Você só confere e salva.
+                    </div>
+                  </div>
+
+                  <div
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={e => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      const file = e.dataTransfer.files[0];
+                      if (file) handleFile(file);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      border: `2px dashed ${dragOver ? '#a78bfa' : selectedFile ? '#7c3aed' : '#1a5c28'}`,
+                      borderRadius: '12px',
+                      background: dragOver ? 'rgba(124,58,237,0.08)' : selectedFile ? 'rgba(124,58,237,0.04)' : '#070f0a',
+                      padding: '40px 24px',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+                    />
+
+                    {selectedFile ? (
+                      <>
+                        <div style={{ fontSize: '32px', marginBottom: '8px' }}>📎</div>
+                        <div style={{ fontWeight: 600, color: '#a78bfa', fontSize: '14px' }}>
+                          {selectedFile.name}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#3d6b4a', marginTop: '4px' }}>
+                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                        </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); setSelectedFile(null); }}
+                          style={{
+                            marginTop: '10px', padding: '4px 12px', borderRadius: '6px',
+                            background: 'transparent', border: '1px solid #7f1d1d',
+                            color: '#f87171', fontSize: '12px', cursor: 'pointer',
+                          }}
+                        >
+                          Remover arquivo
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: '40px', marginBottom: '10px' }}>📄</div>
+                        <div style={{ fontWeight: 600, color: '#5a9a68', fontSize: '14px' }}>
+                          Clique ou arraste o documento aqui
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#3d6b4a', marginTop: '6px' }}>
+                          PDF, JPG, PNG · máximo 10MB
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* STEP 1: Identification */}
           {step === 1 && (
             <div>
-              {/* Usar template */}
-              {!isEditing && templates.length > 0 && (
+              {extractionDone && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px', marginBottom: '18px',
+                  background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                }}>
+                  <span style={{ fontSize: '16px' }}>✅</span>
+                  <span style={{ fontSize: '12px', color: '#4ade80' }}>
+                    Dados extraídos automaticamente. Confira e ajuste se necessário.
+                  </span>
+                </div>
+              )}
+
+              {!isEditing && !extractionDone && templates.length > 0 && (
                 <div style={{ marginBottom: '20px' }}>
                   <button
                     onClick={() => setShowTemplates(v => !v)}
@@ -339,7 +418,6 @@ export function CertificationFormModal({
                 </div>
               )}
 
-              {/* Nome */}
               <div style={fieldWrap}>
                 <label style={labelStyle}>NOME DA CERTIDÃO *</label>
                 <input
@@ -352,7 +430,6 @@ export function CertificationFormModal({
                 />
               </div>
 
-              {/* Categoria */}
               <div style={fieldWrap}>
                 <label style={labelStyle}>CATEGORIA *</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -375,7 +452,6 @@ export function CertificationFormModal({
                 </div>
               </div>
 
-              {/* Órgão emissor */}
               <div style={fieldWrap}>
                 <label style={labelStyle}>ÓRGÃO EMISSOR *</label>
                 <input
@@ -388,7 +464,6 @@ export function CertificationFormModal({
                 />
               </div>
 
-              {/* Número do documento */}
               <div style={fieldWrap}>
                 <label style={labelStyle}>NÚMERO / PROTOCOLO <span style={{ color: '#2a4a30' }}>(opcional)</span></label>
                 <input
@@ -403,7 +478,7 @@ export function CertificationFormModal({
             </div>
           )}
 
-          {/* ── ETAPA 2: Datas e observações ── */}
+          {/* STEP 2: Dates + save */}
           {step === 2 && (
             <div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
@@ -435,7 +510,6 @@ export function CertificationFormModal({
                 </div>
               </div>
 
-              {/* Preview de dias até vencer */}
               {form.expiresAt && (
                 <div style={{
                   marginBottom: '16px', padding: '12px 14px', borderRadius: '8px',
@@ -462,15 +536,27 @@ export function CertificationFormModal({
                 </div>
               )}
 
-              {/* Observações */}
+              {selectedFile && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: '8px', marginBottom: '16px',
+                  background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)',
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                }}>
+                  <span style={{ fontSize: '14px' }}>📎</span>
+                  <span style={{ fontSize: '12px', color: '#c4b5fd' }}>
+                    {selectedFile.name} será enviado junto com a certidão
+                  </span>
+                </div>
+              )}
+
               <div style={fieldWrap}>
                 <label style={labelStyle}>OBSERVAÇÕES <span style={{ color: '#2a4a30' }}>(opcional)</span></label>
                 <textarea
                   style={{
-                    ...inputStyle, resize: 'vertical', minHeight: '100px',
+                    ...inputStyle, resize: 'vertical', minHeight: '80px',
                     fontFamily: 'inherit', lineHeight: '1.6',
                   }}
-                  placeholder="Links de renovação, contatos do órgão emissor, instruções internas..."
+                  placeholder="Links de renovação, contatos do órgão emissor..."
                   value={form.notes}
                   onChange={set('notes')}
                   maxLength={500}
@@ -478,86 +564,12 @@ export function CertificationFormModal({
                   onBlur={e => (e.target.style.borderColor = '#1a5c28')}
                 />
                 <div style={{ fontSize: '11px', color: '#2a4a30', textAlign: 'right', marginTop: '4px' }}>
-                  {form.notes.length}/500
+                  {(form.notes || '').length}/500
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── ETAPA 3: Upload de arquivo (só na criação) ── */}
-          {step === 3 && !isEditing && (
-            <div>
-              <p style={{ fontSize: '13px', color: '#4a7a54', marginBottom: '16px', lineHeight: 1.6 }}>
-                Anexe o documento da certidão em PDF, JPG ou PNG.
-                Você pode pular este passo e fazer o upload depois — a certidão ficará com status <strong style={{ color: '#a78bfa' }}>Pendente</strong>.
-              </p>
-
-              {/* Área de drop */}
-              <div
-                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={e => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  const file = e.dataTransfer.files[0];
-                  if (file) handleFile(file);
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: `2px dashed ${dragOver ? '#10b981' : selectedFile ? '#1a6b3a' : '#1a5c28'}`,
-                  borderRadius: '12px',
-                  background: dragOver ? 'rgba(16,185,129,0.06)' : selectedFile ? 'rgba(16,185,129,0.04)' : '#070f0a',
-                  padding: '36px 24px',
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  marginBottom: '16px',
-                }}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  style={{ display: 'none' }}
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-                />
-
-                {selectedFile ? (
-                  <>
-                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>📎</div>
-                    <div style={{ fontWeight: 600, color: '#4ade80', fontSize: '14px' }}>
-                      {selectedFile.name}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#3d6b4a', marginTop: '4px' }}>
-                      {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                    </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); setSelectedFile(null); }}
-                      style={{
-                        marginTop: '10px', padding: '4px 12px', borderRadius: '6px',
-                        background: 'transparent', border: '1px solid #7f1d1d',
-                        color: '#f87171', fontSize: '12px', cursor: 'pointer',
-                      }}
-                    >
-                      Remover arquivo
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ fontSize: '36px', marginBottom: '10px' }}>📄</div>
-                    <div style={{ fontWeight: 600, color: '#5a9a68', fontSize: '14px' }}>
-                      Clique ou arraste o arquivo aqui
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#3d6b4a', marginTop: '6px' }}>
-                      PDF, JPG, PNG · máximo 10MB
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Erro global */}
           {error && (
             <div style={{
               padding: '10px 14px', borderRadius: '8px', marginTop: '4px',
@@ -569,72 +581,93 @@ export function CertificationFormModal({
           )}
         </div>
 
-        {/* ── Footer com navegação ── */}
+        {/* Footer */}
         <div style={{
           padding: '16px 24px',
           borderTop: '1px solid #0d2e14',
           display: 'flex', justifyContent: 'space-between', gap: '10px',
           flexShrink: 0, background: '#060d08',
         }}>
-          {/* Botão voltar / cancelar */}
           <button
-            onClick={() => step === 1 ? onClose() : setStep(s => s - 1)}
+            onClick={() => {
+              if (step === 0 || (step === 1 && isEditing)) onClose();
+              else if (step === 1 && !isEditing) setStep(0);
+              else setStep(s => s - 1);
+            }}
+            disabled={extracting}
             style={{
               padding: '10px 20px', borderRadius: '8px', fontSize: '13px',
               background: 'transparent', border: '1px solid #1a5c28',
-              color: '#4a7a54', cursor: 'pointer',
+              color: '#4a7a54', cursor: extracting ? 'not-allowed' : 'pointer',
+              opacity: extracting ? 0.5 : 1,
             }}
           >
-            {step === 1 ? 'Cancelar' : '← Voltar'}
+            {(step === 0 || (step === 1 && isEditing)) ? 'Cancelar' : '← Voltar'}
           </button>
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            {/* Pular upload (só etapa 3) */}
-            {step === 3 && !isEditing && (
+            {step === 0 && !extracting && (
               <button
-                onClick={handleSubmit}
-                disabled={loading}
+                onClick={() => setStep(1)}
                 style={{
                   padding: '10px 20px', borderRadius: '8px', fontSize: '13px',
                   background: 'transparent', border: '1px solid #1a5c28',
                   color: '#4a7a54', cursor: 'pointer',
                 }}
               >
-                Pular upload
+                Preencher manual
               </button>
             )}
 
-            {/* Avançar / Salvar */}
             <button
               onClick={() => {
-                if (step === 1 && !step1Valid) return;
-                if (step === 2 && !step2Valid) { setError('Informe a data de vencimento.'); return; }
-                if (step < (isEditing ? 2 : 3)) { setError(''); setStep(s => s + 1); }
-                else handleSubmit();
+                if (step === 0) {
+                  handleExtract();
+                } else if (step === 1 && !step1Valid) {
+                  return;
+                } else if (step === 2 && !step2Valid) {
+                  setError('Informe a data de vencimento.');
+                  return;
+                } else if (step < 2) {
+                  setError('');
+                  setStep(s => s + 1);
+                } else {
+                  handleSubmit();
+                }
               }}
               disabled={
+                extracting ||
                 loading ||
+                (step === 0 && !selectedFile) ||
                 (step === 1 && !step1Valid) ||
                 (step === 2 && !step2Valid)
               }
               style={{
                 padding: '10px 24px', borderRadius: '8px', fontSize: '13px', fontWeight: 700,
-                background: loading || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)
-                  ? '#0a2014'
-                  : 'linear-gradient(135deg, #059669, #10b981)',
+                background:
+                  extracting || loading || (step === 0 && !selectedFile) || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)
+                    ? '#0a2014'
+                    : step === 0
+                      ? 'linear-gradient(135deg, #7c3aed, #a78bfa)'
+                      : 'linear-gradient(135deg, #059669, #10b981)',
                 border: 'none',
-                color: loading || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)
-                  ? '#1a5c28'
-                  : '#fff',
-                cursor: loading ? 'wait' : 'pointer',
-                minWidth: '120px',
+                color:
+                  extracting || loading || (step === 0 && !selectedFile) || (step === 1 && !step1Valid) || (step === 2 && !step2Valid)
+                    ? '#1a5c28'
+                    : '#fff',
+                cursor: (extracting || loading) ? 'wait' : 'pointer',
+                minWidth: '140px',
               }}
             >
-              {loading
-                ? 'Salvando...'
-                : step < (isEditing ? 2 : 3)
-                  ? 'Próximo →'
-                  : isEditing ? 'Salvar alterações' : 'Criar certidão'}
+              {extracting
+                ? 'Extraindo...'
+                : loading
+                  ? 'Salvando...'
+                  : step === 0
+                    ? '🤖 Extrair com IA'
+                    : step < 2
+                      ? 'Próximo →'
+                      : isEditing ? 'Salvar alterações' : 'Criar certidão'}
             </button>
           </div>
         </div>

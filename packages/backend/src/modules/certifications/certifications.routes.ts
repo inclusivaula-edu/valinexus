@@ -62,6 +62,10 @@ const updateCertificationSchema = z.object({
 // Todas as rotas exigem autenticação
 router.use(authenticate);
 
+// POST /api/v1/certifications/extract
+// Envia PDF/imagem para Claude extrair dados sem salvar — usado no fluxo upload-first
+router.post('/extract', upload.single('file'), certificationsController.extractFromFile);
+
 // GET /api/v1/certifications/templates
 // Retorna as certidões-padrão exigidas pela Petrobras (seed do banco)
 router.get('/templates', certificationsController.getTemplates);

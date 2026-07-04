@@ -13,6 +13,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { certificationsService } from './certifications.service';
 import { CreateCertificationDto, UpdateCertificationDto } from '@valinexus/shared';
+import { documentExtractorService } from '../../utils/document-extractor.service';
 
 export const certificationsController = {
 
@@ -120,6 +121,21 @@ export const certificationsController = {
       }
       // 204 No Content — padrão REST para DELETE bem-sucedido sem body de resposta
       res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async extractFromFile(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'Arquivo não enviado' });
+      }
+      if (!documentExtractorService.isConfigured()) {
+        return res.status(503).json({ success: false, error: 'OCR não configurado. Defina ANTHROPIC_API_KEY no servidor.' });
+      }
+      const extracted = await documentExtractorService.extractFromFile(req.file);
+      res.json({ success: true, data: extracted });
     } catch (err) {
       next(err);
     }

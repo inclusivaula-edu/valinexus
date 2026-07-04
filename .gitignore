@@ -30,3 +30,5 @@ uploads/
 
 # Variáveis de produção — nunca commitar
 .env.production
+
+.vercel
