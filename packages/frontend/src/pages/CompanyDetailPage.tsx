@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Company, CompanyStatus, Certification, CertificationCategory, CertificationStatus } from '@valinexus/shared';
+import { Company, CompanyStatus, Certification, CertificationCategory, CertificationStatus, CreateCertificationDto, UpdateCertificationDto } from '@valinexus/shared';
 import { companiesApi, CompanyUser, CompanyUsageStats } from '../services/companies';
 import { certificationsApi } from '../services/certifications';
 import { useAuth } from '../store/AuthContext';
+import { CertificationFormModal } from '../components/modules/CertificationFormModal';
 
 const STATUS_LABEL: Record<CompanyStatus, string> = {
   ACTIVE: 'Ativa', SUSPENDED: 'Suspensa', PENDING_DOCS: 'Pendente', INACTIVE: 'Inativa',
@@ -47,6 +48,12 @@ export default function CompanyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'certs' | 'users' | 'info'>('certs');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingCert, setEditingCert] = useState<Certification | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [actionId, setActionId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -66,6 +73,69 @@ export default function CompanyDetailPage() {
       .catch(() => setError('Erro ao carregar dados da empresa.'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const reloadCerts = useCallback(async () => {
+    if (!id) return;
+    const certList = await certificationsApi.list(id);
+    setCerts(certList);
+  }, [id]);
+
+  async function handleCertSubmit(dto: CreateCertificationDto, file?: File) {
+    let cert: Certification;
+    if (editingCert) {
+      cert = await certificationsApi.update(editingCert.id, dto as UpdateCertificationDto);
+      setCerts(prev => prev.map(c => c.id === editingCert.id ? cert : c));
+    } else {
+      cert = await certificationsApi.create({ ...dto, companyId: id! });
+      await reloadCerts();
+    }
+    if (file) {
+      const result = await certificationsApi.uploadFile(cert.id, file);
+      await reloadCerts();
+      setModalOpen(false);
+      setEditingCert(null);
+      return result.extracted;
+    }
+    setModalOpen(false);
+    setEditingCert(null);
+    return null;
+  }
+
+  async function handleDelete(certId: string) {
+    if (!window.confirm('Excluir esta certidão? Esta ação não pode ser desfeita.')) return;
+    setActionId(certId);
+    setActionError('');
+    try {
+      await certificationsApi.delete(certId);
+      setCerts(prev => prev.filter(c => c.id !== certId));
+    } catch {
+      setActionError('Erro ao excluir certidão.');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  function handleUploadClick(certId: string) {
+    setUploadTargetId(certId);
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !uploadTargetId) return;
+    setActionId(uploadTargetId);
+    setActionError('');
+    try {
+      await certificationsApi.uploadFile(uploadTargetId, file);
+      await reloadCerts();
+    } catch {
+      setActionError('Erro ao enviar arquivo.');
+    } finally {
+      setActionId(null);
+      setUploadTargetId(null);
+      e.target.value = '';
+    }
+  }
 
   const certSummary = {
     total: certs.length,
@@ -143,6 +213,8 @@ export default function CompanyDetailPage() {
       {/* Main */}
       <div style={{ marginLeft: '220px' }}>
 
+        <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={handleFileSelected} />
+
         {/* Header */}
         <div style={{
           padding: '16px 32px', borderBottom: '1px solid #0d2e14', background: '#060d08',
@@ -157,16 +229,25 @@ export default function CompanyDetailPage() {
               {company?.cnpj} {company?.nomeFantasia ? `· ${company.nomeFantasia}` : ''}
             </p>
           </div>
-          {company && (
-            <span style={{
-              ...STATUS_COLOR[company.status],
-              padding: '4px 14px', borderRadius: '100px', fontSize: '11px',
-              fontFamily: 'monospace', fontWeight: 600,
-              border: `1px solid ${STATUS_COLOR[company.status].border}`,
-            }}>
-              {STATUS_LABEL[company.status]}
-            </span>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {company && activeTab === 'certs' && (
+              <button onClick={() => { setEditingCert(null); setModalOpen(true); }} style={{
+                padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                background: 'linear-gradient(135deg, #059669, #10b981)', border: 'none', color: '#fff', cursor: 'pointer',
+                boxShadow: '0 0 14px rgba(16,185,129,0.2)',
+              }}>+ Certidão</button>
+            )}
+            {company && (
+              <span style={{
+                ...STATUS_COLOR[company.status],
+                padding: '4px 14px', borderRadius: '100px', fontSize: '11px',
+                fontFamily: 'monospace', fontWeight: 600,
+                border: `1px solid ${STATUS_COLOR[company.status].border}`,
+              }}>
+                {STATUS_LABEL[company.status]}
+              </span>
+            )}
+          </div>
         </div>
 
         {loading && (
@@ -201,18 +282,24 @@ export default function CompanyDetailPage() {
               ))}
             </div>
 
+            {actionError && (
+              <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', fontSize: '13px', color: '#f87171' }}>
+                {actionError}
+              </div>
+            )}
+
             {/* Tab: Certidões */}
             {activeTab === 'certs' && (
               <div style={{ background: '#060d08', border: '1px solid #0d2e14', borderRadius: '12px', overflow: 'hidden' }}>
                 {certs.length === 0 ? (
                   <div style={{ padding: '48px', textAlign: 'center', color: '#3d6b4a', fontSize: '14px' }}>
-                    Nenhuma certidão cadastrada para esta empresa.
+                    Nenhuma certidão cadastrada. Clique em "+ Certidão" para adicionar.
                   </div>
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#0a1a0e' }}>
-                        {['Certidão', 'Categoria', 'Órgão Emissor', 'Vencimento', 'Status', 'Dias'].map(h => (
+                        {['Certidão', 'Categoria', 'Vencimento', 'Status', 'Dias', 'Ações'].map(h => (
                           <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: '10px', color: '#3d6b4a', fontWeight: 600, letterSpacing: '1px', textTransform: 'uppercase', borderBottom: '1px solid #0d2e14', fontFamily: 'monospace' }}>{h}</th>
                         ))}
                       </tr>
@@ -221,18 +308,18 @@ export default function CompanyDetailPage() {
                       {certs.map((cert, i) => {
                         const days = cert.expiresAt ? daysUntil(cert.expiresAt) : null;
                         const sc = CERT_STATUS_COLOR[cert.status] ?? { bg: '#1e1e2e', color: '#a78bfa' };
+                        const isActing = actionId === cert.id;
                         return (
                           <tr key={cert.id} style={{ borderBottom: i < certs.length - 1 ? '1px solid #080f0a' : 'none' }}>
                             <td style={{ padding: '12px 14px' }}>
                               <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2f0e8' }}>{cert.name}</div>
-                              {cert.documentNumber && <div style={{ fontSize: '11px', color: '#4a7a54' }}>N.º {cert.documentNumber}</div>}
+                              <div style={{ fontSize: '11px', color: '#4a7a54' }}>{cert.issuingBody}{cert.documentNumber ? ` · N.º ${cert.documentNumber}` : ''}</div>
                             </td>
                             <td style={{ padding: '12px 14px' }}>
                               <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: '#4ade80', fontFamily: 'monospace' }}>
                                 {CATEGORY_LABEL[cert.category] ?? cert.category}
                               </span>
                             </td>
-                            <td style={{ padding: '12px 14px', fontSize: '12px', color: '#4a7a54' }}>{cert.issuingBody}</td>
                             <td style={{ padding: '12px 14px', fontSize: '12px', color: '#4a7a54', fontFamily: 'monospace' }}>
                               {cert.expiresAt ? new Date(cert.expiresAt).toLocaleDateString('pt-BR') : '—'}
                             </td>
@@ -243,6 +330,22 @@ export default function CompanyDetailPage() {
                             </td>
                             <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontSize: '12px', color: days !== null && days < 0 ? '#f87171' : days !== null && days < 30 ? '#fbbf24' : '#4a7a54' }}>
                               {days !== null ? (days < 0 ? `${Math.abs(days)}d atrás` : `${days}d`) : '—'}
+                            </td>
+                            <td style={{ padding: '12px 14px' }}>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button title="Editar" disabled={isActing} onClick={() => { setEditingCert(cert); setModalOpen(true); }} style={{
+                                  background: 'transparent', border: '1px solid #1a5c28', borderRadius: '6px',
+                                  color: '#4ade80', cursor: 'pointer', padding: '4px 8px', fontSize: '12px',
+                                }}>✏️</button>
+                                <button title="Upload" disabled={isActing} onClick={() => handleUploadClick(cert.id)} style={{
+                                  background: 'transparent', border: '1px solid #1a5c28', borderRadius: '6px',
+                                  color: '#60a5fa', cursor: 'pointer', padding: '4px 8px', fontSize: '12px',
+                                }}>{isActing && uploadTargetId === cert.id ? '...' : '📎'}</button>
+                                <button title="Excluir" disabled={isActing} onClick={() => handleDelete(cert.id)} style={{
+                                  background: 'transparent', border: '1px solid #3a0a0a', borderRadius: '6px',
+                                  color: '#f87171', cursor: 'pointer', padding: '4px 8px', fontSize: '12px',
+                                }}>🗑️</button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -352,6 +455,16 @@ export default function CompanyDetailPage() {
           </div>
         )}
       </div>
+
+      {modalOpen && id && (
+        <CertificationFormModal
+          companyId={id}
+          isOpen={modalOpen}
+          onClose={() => { setModalOpen(false); setEditingCert(null); }}
+          onSubmit={handleCertSubmit}
+          editingCert={editingCert ?? undefined}
+        />
+      )}
     </div>
   );
 }
