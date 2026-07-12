@@ -144,4 +144,37 @@ export const authRepository = {
       'DELETE FROM refresh_tokens WHERE expires_at < NOW() OR revoked_at IS NOT NULL'
     );
   },
+
+  async getLoginAttempts(userId: string): Promise<{ failedAttempts: number; lockedUntil: Date | null }> {
+    const result = await db.query(
+      'SELECT failed_login_attempts, locked_until FROM users WHERE id = $1',
+      [userId]
+    );
+    if (result.rows.length === 0) return { failedAttempts: 0, lockedUntil: null };
+    return {
+      failedAttempts: result.rows[0].failed_login_attempts ?? 0,
+      lockedUntil: result.rows[0].locked_until ? new Date(result.rows[0].locked_until) : null,
+    };
+  },
+
+  async incrementFailedAttempts(userId: string): Promise<void> {
+    await db.query(
+      `UPDATE users
+       SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1,
+           locked_until = CASE
+             WHEN COALESCE(failed_login_attempts, 0) + 1 >= 5
+             THEN NOW() + INTERVAL '15 minutes'
+             ELSE locked_until
+           END
+       WHERE id = $1`,
+      [userId]
+    );
+  },
+
+  async resetFailedAttempts(userId: string): Promise<void> {
+    await db.query(
+      'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
+      [userId]
+    );
+  },
 };

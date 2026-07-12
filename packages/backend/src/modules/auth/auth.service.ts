@@ -79,21 +79,29 @@ export const authService = {
     meta: { ipAddress?: string; userAgent?: string }
   ): Promise<{ tokens: TokenPair; user: Omit<AuthUser, 'id'> & { id: string } }> {
 
-    // 1. Buscar usuário
     const userRecord = await authRepository.findUserByEmail(email);
 
-    // 2. Comparar senha — mesmo que o usuário não exista, fazemos o compare
-    //    com um hash falso para evitar timing attack (não vazar "email não existe")
+    if (userRecord) {
+      const lockout = await authRepository.getLoginAttempts(userRecord.id);
+      if (lockout.failedAttempts >= 5 && lockout.lockedUntil && lockout.lockedUntil > new Date()) {
+        const minutesLeft = Math.ceil((lockout.lockedUntil.getTime() - Date.now()) / 60000);
+        throw new Error(`CONTA_BLOQUEADA:${minutesLeft}`);
+      }
+    }
+
     const DUMMY_HASH = '$2b$10$abc123abc123abc123abc123abc123abc123abc123abc1234567890';
     const hashToCompare = userRecord?.passwordHash ?? DUMMY_HASH;
     const passwordMatch = await bcrypt.compare(password, hashToCompare);
 
     if (!userRecord || !passwordMatch) {
-      // Mensagem genérica — não dizer qual campo está errado
+      if (userRecord) {
+        await authRepository.incrementFailedAttempts(userRecord.id);
+      }
       throw new Error('EMAIL_OU_SENHA_INVALIDOS');
     }
 
-    // 3. Gerar tokens
+    await authRepository.resetFailedAttempts(userRecord.id);
+
     const authUser: AuthUser = {
       id: userRecord.id,
       name: userRecord.name,
@@ -104,8 +112,7 @@ export const authService = {
     };
     const tokens = generateTokenPair(authUser);
 
-    // 4. Salvar refresh token no banco (hash)
-    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 dias
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await authRepository.saveRefreshToken({
       userId: userRecord.id,
       tokenPlain: tokens.refreshToken,
@@ -114,7 +121,6 @@ export const authService = {
       userAgent: meta.userAgent,
     });
 
-    // 5. Atualizar last_login_at
     await authRepository.updateLastLogin(userRecord.id);
 
     logger.info({ event: 'login', userId: userRecord.id, email: userRecord.email });

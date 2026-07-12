@@ -24,9 +24,8 @@ import { logger } from '../utils/logger';
 const poolConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
-      // SSL obrigatório em produção (Railway usa SSL no PostgreSQL)
       ssl: process.env.NODE_ENV === 'production'
-        ? { rejectUnauthorized: false }
+        ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
         : false,
       max: parseInt(process.env.DB_POOL_MAX ?? '10'),
       idleTimeoutMillis: 30000,

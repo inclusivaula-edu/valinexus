@@ -37,6 +37,13 @@ export const authController = {
           error: 'E-mail ou senha incorretos',
         });
       }
+      if (err instanceof Error && err.message.startsWith('CONTA_BLOQUEADA:')) {
+        const minutes = err.message.split(':')[1];
+        return res.status(429).json({
+          success: false,
+          error: `Conta bloqueada por excesso de tentativas. Tente novamente em ${minutes} minutos.`,
+        });
+      }
       next(err);
     }
   },

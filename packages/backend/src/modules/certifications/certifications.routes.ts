@@ -23,12 +23,18 @@ import { CertificationCategory } from '@valinexus/shared';
 
 const router = Router();
 
-// Multer configurado para armazenamento em memória (buffer).
-// O buffer é passado para o S3 — não salvar no disco do servidor
-// garante que a aplicação funcione em ambientes efêmeros (containers, Lambda).
+const ALLOWED_MIMES = ['application/pdf', 'image/jpeg', 'image/png'];
+
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (ALLOWED_MIMES.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de arquivo não permitido. Use PDF, JPG ou PNG.'));
+    }
+  },
 });
 
 // Schema Zod para criação de certidão — validação declarativa e tipada.

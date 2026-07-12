@@ -12,26 +12,40 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { certificationsService } from './certifications.service';
-import { CreateCertificationDto, UpdateCertificationDto } from '@valinexus/shared';
+import { CreateCertificationDto, UpdateCertificationDto, UserRole } from '@valinexus/shared';
 import { documentExtractorService } from '../../utils/document-extractor.service';
+
+function resolveCompanyId(req: Request): string {
+  const user = req.user!;
+  if (user.role === UserRole.SUPER_ADMIN) {
+    return req.params.companyId ?? (req.query.companyId as string) ?? user.companyId;
+  }
+  return user.companyId;
+}
+
+async function assertOwnership(req: Request, certId: string): Promise<boolean> {
+  const user = req.user!;
+  if (user.role === UserRole.SUPER_ADMIN) return true;
+  const cert = await certificationsService.getById(certId);
+  if (!cert) return false;
+  return cert.companyId === user.companyId;
+}
 
 export const certificationsController = {
 
   async list(req: Request, res: Response, next: NextFunction) {
     try {
-      // companyId pode vir da URL (/companies/:companyId/certifications)
-      // ou do token JWT (quando o usuário vê as próprias certidões)
-      const companyId = req.params.companyId ?? (req.query.companyId as string) ?? req.user!.companyId;
+      const companyId = resolveCompanyId(req);
       const certifications = await certificationsService.listByCompany(companyId);
       res.json({ success: true, data: certifications });
     } catch (err) {
-      next(err); // passa para o error handler global em config/app.ts
+      next(err);
     }
   },
 
   async getDashboard(req: Request, res: Response, next: NextFunction) {
     try {
-      const companyId = req.params.companyId ?? (req.query.companyId as string) ?? req.user!.companyId;
+      const companyId = resolveCompanyId(req);
       const dashboard = await certificationsService.getDashboard(companyId);
       res.json({ success: true, data: dashboard });
     } catch (err) {
@@ -41,6 +55,9 @@ export const certificationsController = {
 
   async getOne(req: Request, res: Response, next: NextFunction) {
     try {
+      if (!(await assertOwnership(req, req.params.id))) {
+        return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
       const certification = await certificationsService.getById(req.params.id);
       if (!certification) {
         return res.status(404).json({ success: false, error: 'Certidão não encontrada' });
@@ -53,9 +70,10 @@ export const certificationsController = {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
+      const companyId = resolveCompanyId(req);
       const dto: CreateCertificationDto = {
         ...req.body,
-        companyId: req.body.companyId ?? req.user!.companyId,
+        companyId,
       };
       const certification = await certificationsService.create(dto);
       res.status(201).json({ success: true, data: certification });
@@ -69,6 +87,9 @@ export const certificationsController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
+      if (!(await assertOwnership(req, req.params.id))) {
+        return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
       const dto: UpdateCertificationDto = req.body;
       const updated = await certificationsService.update(req.params.id, dto);
       if (!updated) {
@@ -82,6 +103,9 @@ export const certificationsController = {
 
   async uploadDocument(req: Request, res: Response, next: NextFunction) {
     try {
+      if (!(await assertOwnership(req, req.params.id))) {
+        return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
       if (!req.file) {
         return res.status(400).json({ success: false, error: 'Arquivo não enviado' });
       }
@@ -95,14 +119,11 @@ export const certificationsController = {
     }
   },
 
-  /**
-   * GET /certifications/:id/download-url
-   * Gera uma URL pré-assinada nova (válida por 15min) para o documento.
-   * O frontend chama isso sempre que o usuário clicar em "Ver arquivo" —
-   * nunca reutiliza a URL antiga, que pode ter expirado.
-   */
   async getDownloadUrl(req: Request, res: Response, next: NextFunction) {
     try {
+      if (!(await assertOwnership(req, req.params.id))) {
+        return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
       const url = await certificationsService.getDownloadUrl(req.params.id);
       if (!url) {
         return res.status(404).json({ success: false, error: 'Documento não encontrado para esta certidão' });
@@ -115,11 +136,13 @@ export const certificationsController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
+      if (!(await assertOwnership(req, req.params.id))) {
+        return res.status(403).json({ success: false, error: 'Acesso negado' });
+      }
       const deleted = await certificationsService.delete(req.params.id);
       if (!deleted) {
         return res.status(404).json({ success: false, error: 'Certidão não encontrada' });
       }
-      // 204 No Content — padrão REST para DELETE bem-sucedido sem body de resposta
       res.status(204).send();
     } catch (err) {
       next(err);

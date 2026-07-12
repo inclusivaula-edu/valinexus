@@ -48,7 +48,13 @@ const pool = new Pool(
 const SUPER_ADMIN = {
   name: 'Clauderson Almeida',
   email: process.env.ADMIN_EMAIL ?? 'claudersonalmeida@gmail.com',
-  password: process.env.ADMIN_PASSWORD ?? 'valinexus@2026!',
+  password: (() => {
+    const pw = process.env.ADMIN_PASSWORD;
+    if (!pw && process.env.NODE_ENV === 'production') {
+      throw new Error('ADMIN_PASSWORD é obrigatório em produção. Defina a variável de ambiente.');
+    }
+    return pw ?? 'dev-only-password-' + crypto.randomBytes(8).toString('hex');
+  })(),
   phone: '(96) 99911-3575',
 };
 
