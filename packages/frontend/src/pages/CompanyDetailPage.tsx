@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Company, CompanyStatus, Certification, CertificationCategory, CertificationStatus, CreateCertificationDto, UpdateCertificationDto } from '@valinexus/shared';
 import { companiesApi, CompanyUser, CompanyUsageStats } from '../services/companies';
-import { certificationsApi } from '../services/certifications';
+import { certificationsApi, BatchExtractResult } from '../services/certifications';
 import { useAuth } from '../store/AuthContext';
 import { CertificationFormModal } from '../components/modules/CertificationFormModal';
+import { NotificationBell } from '../components/modules/NotificationBell';
 
 const STATUS_LABEL: Record<CompanyStatus, string> = {
   ACTIVE: 'Ativa', SUSPENDED: 'Suspensa', PENDING_DOCS: 'Pendente', INACTIVE: 'Inativa',
@@ -53,7 +54,11 @@ export default function CompanyDetailPage() {
   const [actionError, setActionError] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const batchInputRef = useRef<HTMLInputElement>(null);
   const [uploadTargetId, setUploadTargetId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [batchResults, setBatchResults] = useState<BatchExtractResult[] | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -137,6 +142,44 @@ export default function CompanyDetailPage() {
     }
   }
 
+  async function handleExportPdf() {
+    try {
+      const blob = await certificationsApi.exportPdf(id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `compliance-${company?.cnpj ?? 'report'}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setActionError('Erro ao exportar PDF.');
+    }
+  }
+
+  async function handleBatchFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    setBatchLoading(true);
+    setBatchResults(null);
+    try {
+      const results = await certificationsApi.extractBatch(files);
+      setBatchResults(results);
+    } catch {
+      setActionError('Erro ao processar lote de arquivos.');
+    } finally {
+      setBatchLoading(false);
+      e.target.value = '';
+    }
+  }
+
+  const filteredCerts = searchQuery
+    ? certs.filter(c =>
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.issuingBody.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.documentNumber ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : certs;
+
   const certSummary = {
     total: certs.length,
     valid: certs.filter(c => c.status === CertificationStatus.VALID).length,
@@ -214,6 +257,7 @@ export default function CompanyDetailPage() {
       <div style={{ marginLeft: '220px' }}>
 
         <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={handleFileSelected} />
+        <input ref={batchInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" multiple style={{ display: 'none' }} onChange={handleBatchFiles} />
 
         {/* Header */}
         <div style={{
@@ -231,12 +275,23 @@ export default function CompanyDetailPage() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {company && activeTab === 'certs' && (
-              <button onClick={() => { setEditingCert(null); setModalOpen(true); }} style={{
-                padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
-                background: 'linear-gradient(135deg, #059669, #10b981)', border: 'none', color: '#fff', cursor: 'pointer',
-                boxShadow: '0 0 14px rgba(16,185,129,0.2)',
-              }}>+ Certidão</button>
+              <>
+                <button onClick={() => batchInputRef.current?.click()} disabled={batchLoading} style={{
+                  padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                  background: 'transparent', border: '1px solid #1a5c28', color: '#4ade80', cursor: 'pointer',
+                }}>{batchLoading ? 'Processando...' : '📦 Importar Lote'}</button>
+                <button onClick={handleExportPdf} style={{
+                  padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                  background: 'transparent', border: '1px solid #1a5c28', color: '#60a5fa', cursor: 'pointer',
+                }}>📄 PDF</button>
+                <button onClick={() => { setEditingCert(null); setModalOpen(true); }} style={{
+                  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                  background: 'linear-gradient(135deg, #059669, #10b981)', border: 'none', color: '#fff', cursor: 'pointer',
+                  boxShadow: '0 0 14px rgba(16,185,129,0.2)',
+                }}>+ Certidão</button>
+              </>
             )}
+            <NotificationBell />
             {company && (
               <span style={{
                 ...STATUS_COLOR[company.status],
@@ -290,10 +345,62 @@ export default function CompanyDetailPage() {
 
             {/* Tab: Certidões */}
             {activeTab === 'certs' && (
+              <>
+                {/* Search bar */}
+                <div style={{ marginBottom: '14px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', flex: 1 }}>
+                    <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '14px', color: '#3d6b4a' }}>🔍</span>
+                    <input
+                      type="text"
+                      placeholder="Buscar por nome, órgão emissor ou número..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      style={{
+                        width: '100%', padding: '10px 14px 10px 36px', borderRadius: '8px',
+                        background: '#060d08', border: '1px solid #0d2e14', color: '#e2f0e8',
+                        fontSize: '13px', outline: 'none',
+                      }}
+                    />
+                  </div>
+                  {searchQuery && (
+                    <span style={{ fontSize: '12px', color: '#3d6b4a' }}>
+                      {filteredCerts.length} de {certs.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Batch results */}
+                {batchResults && (
+                  <div style={{
+                    marginBottom: '14px', padding: '14px', borderRadius: '10px',
+                    background: '#060d08', border: '1px solid #1a5c28',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#4ade80' }}>
+                        Resultado do Lote — {batchResults.filter(r => r.success).length}/{batchResults.length} extraídos
+                      </span>
+                      <button onClick={() => setBatchResults(null)} style={{
+                        background: 'none', border: 'none', color: '#3d6b4a', cursor: 'pointer', fontSize: '13px',
+                      }}>✕</button>
+                    </div>
+                    {batchResults.map((r, i) => (
+                      <div key={i} style={{
+                        padding: '6px 10px', fontSize: '12px', borderRadius: '6px', marginBottom: '4px',
+                        background: r.success ? 'rgba(16,185,129,0.06)' : 'rgba(248,113,113,0.06)',
+                        color: r.success ? '#4ade80' : '#f87171',
+                      }}>
+                        {r.success ? '✅' : '❌'} {r.filename}
+                        {r.success && r.data ? ` — ${r.data.certificationName ?? 'Sem nome'}` : ''}
+                        {r.error ? ` — ${r.error}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
               <div style={{ background: '#060d08', border: '1px solid #0d2e14', borderRadius: '12px', overflow: 'hidden' }}>
-                {certs.length === 0 ? (
+                {filteredCerts.length === 0 ? (
                   <div style={{ padding: '48px', textAlign: 'center', color: '#3d6b4a', fontSize: '14px' }}>
-                    Nenhuma certidão cadastrada. Clique em "+ Certidão" para adicionar.
+                    {searchQuery ? 'Nenhuma certidão encontrada.' : 'Nenhuma certidão cadastrada. Clique em "+ Certidão" para adicionar.'}
                   </div>
                 ) : (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -305,12 +412,12 @@ export default function CompanyDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {certs.map((cert, i) => {
+                      {filteredCerts.map((cert, i) => {
                         const days = cert.expiresAt ? daysUntil(cert.expiresAt) : null;
                         const sc = CERT_STATUS_COLOR[cert.status] ?? { bg: '#1e1e2e', color: '#a78bfa' };
                         const isActing = actionId === cert.id;
                         return (
-                          <tr key={cert.id} style={{ borderBottom: i < certs.length - 1 ? '1px solid #080f0a' : 'none' }}>
+                          <tr key={cert.id} style={{ borderBottom: i < filteredCerts.length - 1 ? '1px solid #080f0a' : 'none' }}>
                             <td style={{ padding: '12px 14px' }}>
                               <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2f0e8' }}>{cert.name}</div>
                               <div style={{ fontSize: '11px', color: '#4a7a54' }}>{cert.issuingBody}{cert.documentNumber ? ` · N.º ${cert.documentNumber}` : ''}</div>
@@ -354,6 +461,7 @@ export default function CompanyDetailPage() {
                   </table>
                 )}
               </div>
+              </>
             )}
 
             {/* Tab: Usuários */}

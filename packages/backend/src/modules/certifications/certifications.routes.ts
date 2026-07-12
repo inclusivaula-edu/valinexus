@@ -17,6 +17,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { certificationsController } from './certifications.controller';
+import { certificationsExportController } from './certifications-export.controller';
 import { authenticate } from '../../middleware/authenticate';
 import { validateRequest } from '../../middleware/validateRequest';
 import { CertificationCategory } from '@valinexus/shared';
@@ -68,9 +69,10 @@ const updateCertificationSchema = z.object({
 // Todas as rotas exigem autenticação
 router.use(authenticate);
 
-// POST /api/v1/certifications/extract
-// Envia PDF/imagem para Claude extrair dados sem salvar — usado no fluxo upload-first
 router.post('/extract', upload.single('file'), certificationsController.extractFromFile);
+router.post('/extract-batch', upload.array('files', 10), certificationsController.extractBatch);
+router.get('/export-pdf', certificationsExportController.exportPdf);
+router.get('/search', certificationsController.search);
 
 // GET /api/v1/certifications/templates
 // Retorna as certidões-padrão exigidas pela Petrobras (seed do banco)

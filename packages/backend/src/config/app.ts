@@ -19,6 +19,7 @@ import { authRouter } from '../modules/auth/auth.routes';
 import { companiesRouter } from '../modules/companies/companies.routes';
 import { certificationsRouter } from '../modules/certifications/certifications.routes';
 import { notificationsRouter } from '../modules/notifications/notifications.routes';
+import { appNotificationsRouter } from '../modules/notifications/app-notifications.routes';
 
 export function createApp(): Application {
   const app = express();
@@ -92,6 +93,7 @@ export function createApp(): Application {
   app.use('/api/v1/companies', companiesRouter);
   app.use('/api/v1/certifications', certificationsRouter);
   app.use('/api/v1/notifications', notificationsRouter);
+  app.use('/api/v1/app-notifications', appNotificationsRouter);
 
   // ── 404 Handler ──────────────────────────────────────────────────────────
   app.use((_req, res) => {

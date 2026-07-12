@@ -118,4 +118,39 @@ export const certificationsApi = {
     const { data } = await api.get<ApiResponse<{ url: string }>>(`/certifications/${id}/download-url`);
     return data.data.url;
   },
+
+  async search(params: { q?: string; status?: string; category?: string; companyId?: string }): Promise<Certification[]> {
+    const query = new URLSearchParams();
+    if (params.q) query.set('q', params.q);
+    if (params.status) query.set('status', params.status);
+    if (params.category) query.set('category', params.category);
+    if (params.companyId) query.set('companyId', params.companyId);
+    const { data } = await api.get<ApiResponse<Certification[]>>(`/certifications/search?${query}`);
+    return data.data;
+  },
+
+  async exportPdf(companyId?: string): Promise<Blob> {
+    const params = companyId ? `?companyId=${companyId}` : '';
+    const response = await api.get(`/certifications/export-pdf${params}`, { responseType: 'blob' });
+    return response.data as Blob;
+  },
+
+  async extractBatch(files: File[]): Promise<BatchExtractResult[]> {
+    const form = new FormData();
+    files.forEach(f => form.append('files', f));
+    const { data } = await api.post<ApiResponse<BatchExtractResult[]>>(
+      '/certifications/extract-batch',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 }
+    );
+    return data.data;
+  },
 };
+
+export interface BatchExtractResult {
+  filename: string;
+  success: boolean;
+  data: ExtractedDocData | null;
+  error: string | null;
+}
+

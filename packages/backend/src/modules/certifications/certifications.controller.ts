@@ -14,6 +14,7 @@ import { Request, Response, NextFunction } from 'express';
 import { certificationsService } from './certifications.service';
 import { CreateCertificationDto, UpdateCertificationDto, UserRole } from '@valinexus/shared';
 import { documentExtractorService } from '../../utils/document-extractor.service';
+import { auditService } from '../../utils/audit.service';
 
 function resolveCompanyId(req: Request): string {
   const user = req.user!;
@@ -76,6 +77,11 @@ export const certificationsController = {
         companyId,
       };
       const certification = await certificationsService.create(dto);
+      auditService.log({
+        userId: req.user!.userId, companyId, action: 'CREATE',
+        entityType: 'certification', entityId: certification.id,
+        details: { name: dto.name, category: dto.category }, ipAddress: req.ip,
+      });
       res.status(201).json({ success: true, data: certification });
     } catch (err) {
       if (err instanceof Error && err.message === 'CERTIDAO_DUPLICADA') {
@@ -95,6 +101,11 @@ export const certificationsController = {
       if (!updated) {
         return res.status(404).json({ success: false, error: 'Certidão não encontrada' });
       }
+      auditService.log({
+        userId: req.user!.userId, companyId: req.user!.companyId, action: 'UPDATE',
+        entityType: 'certification', entityId: req.params.id,
+        details: dto as Record<string, unknown>, ipAddress: req.ip,
+      });
       res.json({ success: true, data: updated });
     } catch (err) {
       next(err);
@@ -143,6 +154,10 @@ export const certificationsController = {
       if (!deleted) {
         return res.status(404).json({ success: false, error: 'Certidão não encontrada' });
       }
+      auditService.log({
+        userId: req.user!.userId, companyId: req.user!.companyId, action: 'DELETE',
+        entityType: 'certification', entityId: req.params.id, ipAddress: req.ip,
+      });
       res.status(204).send();
     } catch (err) {
       next(err);
@@ -168,6 +183,63 @@ export const certificationsController = {
     try {
       const templates = await certificationsService.getTemplates();
       res.json({ success: true, data: templates });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async search(req: Request, res: Response, next: NextFunction) {
+    try {
+      const companyId = resolveCompanyId(req);
+      const query = (req.query.q as string ?? '').trim();
+      const status = req.query.status as string | undefined;
+      const category = req.query.category as string | undefined;
+
+      let certs = await certificationsService.listByCompany(companyId);
+
+      if (query) {
+        const lower = query.toLowerCase();
+        certs = certs.filter(c =>
+          c.name.toLowerCase().includes(lower) ||
+          (c.issuingBody && c.issuingBody.toLowerCase().includes(lower)) ||
+          (c.documentNumber && c.documentNumber.toLowerCase().includes(lower))
+        );
+      }
+      if (status) {
+        certs = certs.filter(c => c.status === status);
+      }
+      if (category) {
+        certs = certs.filter(c => c.category === category);
+      }
+
+      res.json({ success: true, data: certs });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async extractBatch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ success: false, error: 'Nenhum arquivo enviado' });
+      }
+      if (!documentExtractorService.isConfigured()) {
+        return res.status(503).json({ success: false, error: 'OCR não configurado. Defina ANTHROPIC_API_KEY no servidor.' });
+      }
+
+      const results = await Promise.allSettled(
+        files.map(file => documentExtractorService.extractFromFile(file))
+      );
+
+      const extracted = results.map((r, i) => ({
+        filename: files[i].originalname,
+        success: r.status === 'fulfilled',
+        data: r.status === 'fulfilled' ? r.value : null,
+        error: r.status === 'rejected' ? (r.reason as Error).message : null,
+      }));
+
+      res.json({ success: true, data: extracted });
     } catch (err) {
       next(err);
     }

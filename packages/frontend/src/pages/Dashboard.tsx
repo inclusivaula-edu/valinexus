@@ -18,6 +18,7 @@ import { useAuth } from '../store/AuthContext';
 import { CertificationFormModal } from '../components/modules/CertificationFormModal';
 import { NotificationSettingsPanel } from '../components/modules/NotificationSettingsPanel';
 import { certificationsApi } from '../services/certifications';
+import { NotificationBell } from '../components/modules/NotificationBell';
 
 // ─── Utilitários ─────────────────────────────────────────────────────────────
 
@@ -325,6 +326,23 @@ export default function Dashboard() {
             {actionError && (
               <span style={{ fontSize: '12px', color: '#f87171', maxWidth: '220px' }}>{actionError}</span>
             )}
+            <NotificationBell />
+            <button
+              onClick={async () => {
+                try {
+                  const blob = await certificationsApi.exportPdf();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a'); a.href = url;
+                  a.download = `relatorio-compliance-${Date.now()}.pdf`;
+                  a.click(); URL.revokeObjectURL(url);
+                } catch { setActionError('Erro ao gerar PDF.'); }
+              }}
+              style={{
+                padding: '7px 12px', borderRadius: '7px', fontSize: '12px',
+                background: 'transparent', border: '1px solid #0d2e14', color: '#3d6b4a', cursor: 'pointer',
+              }}
+              title="Exportar relatório PDF"
+            >📄 PDF</button>
             <button
               onClick={refresh}
               style={{
