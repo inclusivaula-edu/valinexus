@@ -6,6 +6,7 @@ import { certificationsApi, BatchExtractResult } from '../services/certification
 import { useAuth } from '../store/AuthContext';
 import { CertificationFormModal } from '../components/modules/CertificationFormModal';
 import { NotificationBell } from '../components/modules/NotificationBell';
+import { CompanyEditModal } from '../components/modules/CompanyEditModal';
 
 const STATUS_LABEL: Record<CompanyStatus, string> = {
   ACTIVE: 'Ativa', SUSPENDED: 'Suspensa', PENDING_DOCS: 'Pendente', INACTIVE: 'Inativa',
@@ -59,6 +60,7 @@ export default function CompanyDetailPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [batchResults, setBatchResults] = useState<BatchExtractResult[] | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [editCompanyOpen, setEditCompanyOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -512,6 +514,13 @@ export default function CompanyDetailPage() {
 
             {/* Tab: Dados da Empresa */}
             {activeTab === 'info' && company && (
+              <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px' }}>
+                <button onClick={() => setEditCompanyOpen(true)} style={{
+                  padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600,
+                  background: 'transparent', border: '1px solid #1a5c28', color: '#4ade80', cursor: 'pointer',
+                }}>✏️ Editar Empresa</button>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div style={{ background: '#060d08', border: '1px solid #0d2e14', borderRadius: '12px', padding: '24px' }}>
                   <h3 style={{ fontSize: '13px', color: '#3d6b4a', fontFamily: 'monospace', letterSpacing: '1px', marginTop: 0, marginBottom: '16px' }}>DADOS CADASTRAIS</h3>
@@ -559,10 +568,19 @@ export default function CompanyDetailPage() {
                   </div>
                 </div>
               </div>
+              </>
             )}
           </div>
         )}
       </div>
+
+      {editCompanyOpen && company && (
+        <CompanyEditModal
+          company={company}
+          onClose={() => setEditCompanyOpen(false)}
+          onSaved={(updated) => { setCompany(updated); setEditCompanyOpen(false); }}
+        />
+      )}
 
       {modalOpen && id && (
         <CertificationFormModal
