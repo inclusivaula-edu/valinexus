@@ -66,6 +66,12 @@ export const companiesApi = {
     return data.data;
   },
 
+  /** Aplica o Kit CRC Petrobras — cria as certidões do kit que a empresa ainda não tem */
+  async applyCrcKit(id: string): Promise<number> {
+    const { data } = await api.post<ApiResponse<{ created: number }>>(`/companies/${id}/apply-crc-kit`);
+    return data.data.created;
+  },
+
   async getUsageStats(id: string): Promise<CompanyUsageStats> {
     const { data } = await api.get<ApiResponse<CompanyUsageStats>>(`/companies/${id}/stats`);
     return data.data;

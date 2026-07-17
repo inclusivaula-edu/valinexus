@@ -243,6 +243,33 @@ export const companiesRepository = {
     return result.rowCount ?? 0;
   },
 
+  /**
+   * Aplica um kit de templates (ex.: 'CRC_PETROBRAS') a uma empresa,
+   * pulando certidões de mesmo nome que ela já possua — reaplicar o
+   * kit nunca duplica.
+   */
+  async applyKit(companyId: string, kit: string): Promise<number> {
+    const result = await db.query(
+      `INSERT INTO certifications (company_id, name, category, issuing_body, expires_at, status)
+       SELECT
+         $1,
+         t.name,
+         t.category,
+         t.issuing_body,
+         (NOW()::DATE + INTERVAL '1 day'),
+         'PENDING_UPLOAD'
+       FROM certification_templates t
+       WHERE t.kit = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM certifications c
+           WHERE c.company_id = $1 AND c.name = t.name
+         )
+       RETURNING id`,
+      [companyId, kit]
+    );
+    return result.rowCount ?? 0;
+  },
+
   /** Lista os usuários de uma empresa — usado na tela de detalhe do admin */
   async listUsers(companyId: string): Promise<Array<{ id: string; name: string; email: string; role: string; isActive: boolean; mustChangePassword: boolean; lastLoginAt: Date | null }>> {
     const result = await db.query(

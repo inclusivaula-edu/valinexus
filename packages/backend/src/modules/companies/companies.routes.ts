@@ -85,6 +85,7 @@ router.post('/', validateRequest(createCompanySchema), companiesController.creat
 router.post('/onboard', validateRequest(createWithAdminSchema), companiesController.createWithAdmin);
 
 router.patch('/:id', validateRequest(updateCompanySchema), companiesController.update);
+router.post('/:id/apply-crc-kit', companiesController.applyCrcKit);
 router.post('/:id/suspend', companiesController.suspend);
 router.post('/:id/reactivate', companiesController.reactivate);
 

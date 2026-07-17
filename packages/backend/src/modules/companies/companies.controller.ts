@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { companiesService } from './companies.service';
+import { companiesRepository } from './companies.repository';
+import { auditService } from '../../utils/audit.service';
 import { CreateCompanyDto, UpdateCompanyDto, CreateCompanyWithAdminDto, CompanyStatus } from '@valinexus/shared';
 
 function mapServiceError(err: unknown): { status: number; error: string } | null {
@@ -97,6 +99,29 @@ export const companiesController = {
         return res.status(404).json({ success: false, error: 'Empresa não encontrada' });
       }
       res.json({ success: true, data: updated });
+    } catch (err) { next(err); }
+  },
+
+  /**
+   * Aplica o Kit CRC Petrobras: cria em bloco as certidões pendentes
+   * exigidas no cadastramento/renovação do CRC no Petronect.
+   * Idempotente — certidões que a empresa já tem não são duplicadas.
+   */
+  async applyCrcKit(req: Request, res: Response, next: NextFunction) {
+    try {
+      const company = await companiesService.getById(req.params.id);
+      if (!company) {
+        return res.status(404).json({ success: false, error: 'Empresa não encontrada' });
+      }
+      const created = await companiesRepository.applyKit(req.params.id, 'CRC_PETROBRAS');
+      await auditService.log({
+        userId: req.user!.userId,
+        companyId: req.params.id,
+        action: 'APPLY_KIT',
+        entityType: 'certification',
+        details: { kit: 'CRC_PETROBRAS', created },
+      });
+      res.json({ success: true, data: { created } });
     } catch (err) { next(err); }
   },
 

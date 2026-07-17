@@ -61,6 +61,8 @@ export default function CompanyDetailPage() {
   const [batchResults, setBatchResults] = useState<BatchExtractResult[] | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
   const [editCompanyOpen, setEditCompanyOpen] = useState(false);
+  const [kitLoading, setKitLoading] = useState(false);
+  const [kitMessage, setKitMessage] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -174,6 +176,25 @@ export default function CompanyDetailPage() {
     }
   }
 
+  async function handleApplyCrcKit() {
+    if (!id) return;
+    if (!window.confirm('Aplicar o Kit CRC Petrobras? Serão criadas como pendentes as certidões exigidas no cadastramento do CRC que a empresa ainda não possui.')) return;
+    setKitLoading(true);
+    setKitMessage('');
+    setActionError('');
+    try {
+      const created = await companiesApi.applyCrcKit(id);
+      await reloadCerts();
+      setKitMessage(created > 0
+        ? `Kit CRC aplicado: ${created} certidão(ões) adicionada(s) como pendente(s).`
+        : 'A empresa já possui todas as certidões do Kit CRC.');
+    } catch {
+      setActionError('Erro ao aplicar o Kit CRC Petrobras.');
+    } finally {
+      setKitLoading(false);
+    }
+  }
+
   const filteredCerts = searchQuery
     ? certs.filter(c =>
         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -278,6 +299,10 @@ export default function CompanyDetailPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {company && activeTab === 'certs' && (
               <>
+                <button onClick={handleApplyCrcKit} disabled={kitLoading} title="Cria as certidões exigidas no cadastramento do CRC Petrobras" style={{
+                  padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                  background: 'transparent', border: '1px solid #b45309', color: '#fbbf24', cursor: 'pointer',
+                }}>{kitLoading ? 'Aplicando...' : '⛽ Kit CRC Petrobras'}</button>
                 <button onClick={() => batchInputRef.current?.click()} disabled={batchLoading} style={{
                   padding: '8px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
                   background: 'transparent', border: '1px solid #1a5c28', color: '#4ade80', cursor: 'pointer',
@@ -342,6 +367,13 @@ export default function CompanyDetailPage() {
             {actionError && (
               <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.3)', fontSize: '13px', color: '#f87171' }}>
                 {actionError}
+              </div>
+            )}
+
+            {kitMessage && (
+              <div style={{ marginBottom: '14px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', fontSize: '13px', color: '#4ade80', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>⛽ {kitMessage}</span>
+                <button onClick={() => setKitMessage('')} style={{ background: 'none', border: 'none', color: '#3d6b4a', cursor: 'pointer', fontSize: '13px' }}>✕</button>
               </div>
             )}
 
