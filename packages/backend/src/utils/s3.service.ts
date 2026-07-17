@@ -44,6 +44,9 @@ const REGION      = process.env.AWS_REGION      ?? 'sa-east-1';
 const BUCKET      = process.env.S3_BUCKET_NAME  ?? 'valinexus-docs';
 const KEY_ID      = process.env.AWS_ACCESS_KEY_ID;
 const SECRET_KEY  = process.env.AWS_SECRET_ACCESS_KEY;
+// Endpoint customizado para provedores S3-compatíveis (Cloudflare R2, MinIO, Supabase).
+// Ex.: https://<account-id>.r2.cloudflarestorage.com — deixe vazio para AWS S3 nativo.
+const ENDPOINT    = process.env.S3_ENDPOINT;
 
 // URL pré-assinada válida por 15 minutos — suficiente para visualizar/baixar
 const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
@@ -59,6 +62,7 @@ function getClient(): S3Client {
   if (!_client) {
     _client = new S3Client({
       region: REGION,
+      ...(ENDPOINT && { endpoint: ENDPOINT, forcePathStyle: true }),
       credentials: {
         accessKeyId: KEY_ID!,
         secretAccessKey: SECRET_KEY!,

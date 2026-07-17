@@ -126,6 +126,12 @@ export const certificationsController = {
       );
       res.json({ success: true, data: result });
     } catch (err) {
+      if (err instanceof Error && err.message.includes('S3 não configurado')) {
+        return res.status(503).json({
+          success: false,
+          error: 'Armazenamento de arquivos não configurado. Contate o administrador do sistema.',
+        });
+      }
       next(err);
     }
   },
